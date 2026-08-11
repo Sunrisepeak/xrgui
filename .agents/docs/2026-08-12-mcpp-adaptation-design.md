@@ -1277,3 +1277,56 @@ external/mo_yanxi_vulkan_wrapper/external/mo_yanxi_utility/mcpp.toml
 进了 mcpp-index）；**上游化时零改动**，manifest 本来就在正确位置。
 
 manifest 随补丁分发，所以 `apply.sh` 仍是新检出的必要一步——它本来就是。
+
+
+---
+
+## 18. 六个外部库改走 mcpp-index
+
+§4 把 gtl / nanosvg / miniaudio / spirv_reflect / plf_hive / VulkanMemoryAllocator
+当成「submodule + `-I`」处理，理由是它们没有索引包。现在有了
+（[mcpp-index#207](https://github.com/mcpplibs/mcpp-index/pull/207)，已合入）。
+
+**这不是为 mcpp 特设的迁就。** `xmake.lua:44` 写的是
+
+```lua
+add_requires("nanosvg", "spirv-reflect", "gtl", "glfw", "miniaudio")
+```
+
+上游自己的主构建就是从 xrepo 包拿这四个的，`external/` 下同名的 submodule
+对 xmake 构建根本没参与。所以本次改动是让 mcpp 追上项目主构建已有的做法，
+顺带把那几个 submodule 从仓库里摘掉。
+
+### 必须同步拿掉的四处「自带实现」
+
+这几个库是 stb 风格：实现藏在宏后面。包已经把实现编进去了，本仓再定义一次
+就是**重复符号**——链接期才报错，很晚才暴露。
+
+| 位置 | 改动 |
+|---|---|
+| `src.backends/miniaudio/audio.cpp` | 删 `#define MINIAUDIO_IMPLEMENTATION` |
+| `mo_yanxi_vulkan_wrapper/src/vk_wrap/util/vma.cpp` | 删 `#define VMA_IMPLEMENTATION` |
+| `external/spirv_reflect/spirv_reflect.cpp` | 整个删掉（曾用来把 `.c` 当 C++ 编） |
+| `mcpp.toml` `sources` | 删 `external/spirv_reflect/spirv_reflect.c` |
+
+### 两处接口差异
+
+**nanosvg 的 include 写法。** 本仓写的是 `<nanosvg/nanosvg.h>`，那是某些包管理器
+安装时套的一层目录，不是上游布局——上游头文件在 `src/` 下，自己的示例写
+`#include "nanosvg.h"`。包按上游布局暴露，所以 `src/graphic/msdf.cpp` 改成
+`<nanosvg.h>`，`mcpp/shims/` 那对转发头随之消失。
+
+**VMA 的入口点解析。** 包用 `VMA_DYNAMIC_VULKAN_FUNCTIONS` 构建，这样它只依赖
+Vulkan 头文件而不拖一个 loader 进来（否则任何用内存分配器的项目都被迫链
+loader，还会跟走 volk 的项目打架）。代价是 VMA 不再按名字找符号，需要调用方
+填 `pVulkanFunctions`。本仓链接了 loader，所以 `vma.ixx` 的构造函数里补一层：
+`pVulkanFunctions` 为空时塞入 `vkGetInstanceProcAddr` / `vkGetDeviceProcAddr`，
+VMA 自己取其余的。补在构造函数而不是调用点，是因为那个接受原始
+`VmaAllocatorCreateInfo` 的构造函数是公开的，调用点堵不全。
+
+### 结果
+
+`external/` 从 12 个 submodule 降到 7 个（VulkanMemoryAllocator 是 vulkan_wrapper
+的嵌套 submodule，属于别人的仓库，只从构建里摘掉、不动它的 `.gitmodules`）。
+450 个目标文件编出，仍然只有 `renderer.components.ixx` 一个 TU 卡在 §17 之后
+那个 GCC 缺陷上。

@@ -31,7 +31,6 @@ sources = [
 
   # 以模块 / C 源形式直接收编的 vendored 单元
   "external/allocator2d/include/mo_yanxi/allocator2d.ixx",
-  "external/spirv_reflect/spirv_reflect.c",
 
   # SIMD 探测是 xmake 侧的诊断件，不是构建单元
   "!src/vectorization_check.cpp",
@@ -39,13 +38,7 @@ sources = [
 
 include_dirs = [
   "external/include",                       # stb_image / beman::inplace_vector
-  "external/plf_hive",
   "external/small_vector/source/include",
-  "external/gtl/include",
-  "external/miniaudio",
-  "external/spirv_reflect",
-  "mcpp/shims",                             # 代码写的是 <nanosvg/nanosvg.h>，见下方 generated_files
-  "external/mo_yanxi_vulkan_wrapper/external/VulkanMemoryAllocator/include",
 ]
 
 defines = [
@@ -106,6 +99,11 @@ compat.vulkan         = "1.4.357.0"     # 自动带出 compat.vulkan-headers
 compat.vulkan-runtime = "2026.07.29"    # Linux 主机 ICD 符号农场
 compat.harfbuzz       = "14.3.0"        # 文本整形，自带 FreeType 桥接
 compat.msdfgen        = "1.13"          # SDF 生成（core + FreeType import）
+compat.miniaudio      = "0.11.25"       # 实现 TU 由包提供，见下方注释
+compat.spirv-reflect  = "1.4.357.0"     # 与 compat.vulkan 同 SDK 线
+compat.nanosvg        = "2026.07.09"    # 上游写法是 <nanosvg.h>
+compat.gtl            = "1.2.0"         # flat_hash_map / btree
+compat.plf-hive       = "2026.07.31"    # plf::hive
 compat.mimalloc       = "3.4.5"
 marzer.tomlplusplus   = "3.4.0"
 # magic_enum 走索引包而不是 submodule 里那份：上游的 module/magic_enum.cppm 把

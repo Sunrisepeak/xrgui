@@ -5,7 +5,7 @@ module;
 #define MO_YANXI_USE_COMPLEX_SVG 0
 #endif
 
-#include <nanosvg/nanosvg.h>
+#include <nanosvg.h>
 
 #if MO_YANXI_USE_COMPLEX_SVG
 #include <ft2build.h>
