@@ -1,9 +1,3 @@
-diff --git a/external/mo_yanxi_utility b/external/mo_yanxi_utility
---- a/external/mo_yanxi_utility
-+++ b/external/mo_yanxi_utility
-@@ -1 +1 @@
--Subproject commit fbdb52871425e953e476c67509640bc36b05cb2b
-+Subproject commit fbdb52871425e953e476c67509640bc36b05cb2b-dirty
 diff --git a/src/vk_wrap/objects/physical_device.ixx b/src/vk_wrap/objects/physical_device.ixx
 index fc4848a..4feb3c3 100644
 --- a/src/vk_wrap/objects/physical_device.ixx
