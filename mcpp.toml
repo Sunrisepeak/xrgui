@@ -4,9 +4,10 @@
 # 本文件是 mcpp 的多平台路径。设计与取舍见
 # .agents/docs/2026-08-12-mcpp-adaptation-design.md
 #
-# 当前状态（P1 进行中）：三个 path 依赖里 utility 与 vulkan_wrapper 已全绿，
-# react_flow 被一个 GCC 16 模块 bug 阻塞（见设计文档 §3.2 类别 ④）。因此本文件
-# 描述的是目标形态，尚不能端到端构建 —— 用 `mcpp build` 观察进度。
+# 当前状态（P1 基本完成）：源码符合性问题已全部清零，三个重库（harfbuzz /
+# msdfgen / mimalloc）已进 mcpp-index。`mcpp build` 现在产出 1332 个对象与
+# 626 个 BMI，唯一失败的是 react_flow 的两个分区 —— 一个 GCC 16 模块 bug
+# （见设计文档 §14.3 类别 ④），七种规避均无效。
 
 [package]
 name        = "xrgui"
@@ -60,7 +61,14 @@ defines = [
 
 # hardware_destructive_interference_size 在 GCC 上是 ABI 警告；这里是包内自用，
 # 当前 tuning 就是 64 字节，不必让它刷屏。
-cxxflags = ["-Wno-interference-size"]
+#
+# -Wno-changes-meaning：本代码库普遍使用「成员名与其类型同名」的写法
+# （`vk::fence fence;`、`vk::instance instance;`、`interp interp{};` …）。
+# 按 [basic.scope.class] 这是 ill-formed NDR，GCC 默认报错而 MSVC 放行。
+# 逐个把类型写成限定名是正确的修法，但那是几十处、且该由上游做的机械改动；
+# GCC 为这个具体的历史写法提供了这个开关，先用它把构建打通。
+# 已经顺手限定掉的几处（image_derives / binary_trace / gradient）保持限定形式。
+cxxflags = ["-Wno-interference-size", "-Wno-changes-meaning"]
 
 # nanosvg 的头文件在 external/nanosvg/src/，但调用点写的是 <nanosvg/nanosvg.h>。
 # 生成一对薄转发头，避免为一个上游布局去改所有调用点。
@@ -76,25 +84,29 @@ cxxflags = ["-Wno-interference-size"]
 #include "../../../external/nanosvg/src/nanosvgrast.h"
 """
 
+# 全部依赖写在一张表里，用点式 `ns.name` 精确身份。
+# 相比按命名空间拆 [dependencies.compat] / [dependencies.neargye] / …，
+# 好处是一眼能看全这个工程到底依赖什么 —— 拆表的写法会把 12 条依赖散成 4 段，
+# 而它们的区别只是命名空间，不是角色。
 [dependencies]
+# ── 本仓过渡期薄包（见 .agents/docs 的 §4.3）──────────
 utility        = { path = "mcpp/pkgs/moyanxi-utility" }
 react_flow     = { path = "mcpp/pkgs/moyanxi-react-flow" }
 vulkan_wrapper = { path = "mcpp/pkgs/moyanxi-vulkan-wrapper" }
 
-[dependencies.compat]
-glfw           = "3.4"
-freetype       = "2.13.3"
-vulkan         = "1.4.357.0"     # 自动带出 compat.vulkan-headers
-vulkan-runtime = "2026.07.29"    # Linux 主机 ICD 符号农场
-
+# ── 索引包 ────────────────────────────────────────────
+compat.glfw           = "3.4"
+compat.freetype       = "2.13.3"
+compat.vulkan         = "1.4.357.0"     # 自动带出 compat.vulkan-headers
+compat.vulkan-runtime = "2026.07.29"    # Linux 主机 ICD 符号农场
+compat.harfbuzz       = "14.3.0"        # 文本整形，自带 FreeType 桥接
+compat.msdfgen        = "1.13"          # SDF 生成（core + FreeType import）
+compat.mimalloc       = "3.4.5"
+marzer.tomlplusplus   = "3.4.0"
 # magic_enum 走索引包而不是 submodule 里那份：上游的 module/magic_enum.cppm 把
 # `import std;` 包在 #ifdef MAGIC_ENUM_USE_STD_MODULE 里，而 mcpp 的扫描器禁止
 # 条件 import。索引包用 scan_overrides 正好绕过这一点，省掉给上游打补丁。
-[dependencies.neargye]
-magic_enum = "0.9.8"
-
-[dependencies.marzer]
-tomlplusplus = "3.4.0"
+neargye.magic_enum    = "0.9.8"
 
 # ── 目标 ───────────────────────────────────────────────
 [targets.xrgui_hello]

@@ -26,7 +26,7 @@ include_dirs = [
 
 defines = ["VK_USE_64_BIT_PTR_DEFINES=1", "MO_YANXI_VULKAN_WRAPPER_ENABLE_CHECK=0"]
 
-cxxflags = ["-Wno-interference-size"]
+cxxflags = ["-Wno-interference-size", "-Wno-changes-meaning"]
 
 [dependencies]
 utility = { path = "../moyanxi-utility" }

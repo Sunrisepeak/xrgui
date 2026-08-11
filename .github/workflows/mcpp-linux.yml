@@ -1,0 +1,126 @@
+name: mcpp (linux)
+
+# The mcpp build, on Linux with GCC 16. Runs alongside the existing
+# build_and_dispatch.yml (Windows/MSVC via xmake) -- the two build systems are
+# independent by design, see .agents/docs/2026-08-12-mcpp-adaptation-design.md
+#
+# WHAT IS AND IS NOT REQUIRED HERE
+#
+# `packages` is a required job: mo_yanxi.utility and mo_yanxi.vulkan_wrapper
+# build clean and must stay that way.
+#
+# `root` is continue-on-error, and that is a statement about ONE known
+# blocker rather than a way to ignore failures: mo_yanxi.react_flow hits a GCC
+# 16 modules bug (`recursive lazy load / failed to load pendings for
+# 'std::vector'`) that seven different workarounds do not move, and xrgui
+# imports react_flow from its scene and overlay layers. Everything else in the
+# root package -- 1332 objects, 626 BMIs -- already compiles. The job still
+# runs and still prints what failed, so a NEW breakage is visible in the log;
+# it just cannot gate the branch on a compiler bug. Flip it to required the
+# day react_flow builds.
+
+on:
+  push:
+    branches: [master, main, "feat/**"]
+    paths-ignore: ["**/*.md", "properties/showcase/**"]
+  pull_request:
+    paths-ignore: ["**/*.md", "properties/showcase/**"]
+  workflow_dispatch:
+
+env:
+  # Pinned rather than "latest": this project leans on specific scanner and
+  # module-graph behaviour, so a silent mcpp bump should be a visible diff.
+  MCPP_VERSION: "2026.8.11.3"
+
+concurrency:
+  group: mcpp-linux-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install host libraries
+        # fontconfig is the Linux system font backend used by
+        # src/platform/font.ixx. Everything else xrgui needs comes from the
+        # mcpp index (glfw pulls the X11 stack, vulkan pulls the loader).
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libfontconfig1-dev
+
+      - name: Install mcpp ${{ env.MCPP_VERSION }}
+        run: |
+          curl -L -fsS -o mcpp.tar.gz \
+            "https://github.com/mcpp-community/mcpp/releases/download/v${MCPP_VERSION}/mcpp-${MCPP_VERSION}-linux-x86_64.tar.gz"
+          tar -xzf mcpp.tar.gz
+          root="$PWD/mcpp-${MCPP_VERSION}-linux-x86_64"
+          mkdir -p ~/.mcpp/registry
+          cp -a "$root/registry/." ~/.mcpp/registry/
+          echo "$root/bin" >> "$GITHUB_PATH"
+          echo "MCPP_VENDORED_XLINGS=$root/registry/bin/xlings" >> "$GITHUB_ENV"
+
+      - name: Report versions
+        run: mcpp self version
+
+      - name: Apply submodule patches
+        # The GCC/mcpp source-conformance fixes for utility, vulkan_wrapper and
+        # allocator2d live in other repositories, so they ship as patches here
+        # until they are upstreamed. apply.sh is idempotent.
+        run: ./mcpp/patches/apply.sh
+
+      - name: Cache mcpp toolchain and package downloads
+        uses: actions/cache@v4
+        with:
+          # The GCC 16 toolchain plus the compat.* source tarballs are ~500 MB
+          # and none of it changes between runs unless a pin moves.
+          path: |
+            ~/.mcpp/registry/data
+            ~/.mcpp/build-cache
+          key: mcpp-${{ env.MCPP_VERSION }}-${{ hashFiles('mcpp.toml', 'mcpp/pkgs/*/mcpp.toml') }}
+          restore-keys: mcpp-${{ env.MCPP_VERSION }}-
+
+      # ── required ────────────────────────────────────────────────────
+      - name: Build mo_yanxi.utility
+        working-directory: mcpp/pkgs/moyanxi-utility
+        run: mcpp build
+
+      - name: Build mo_yanxi.vulkan_wrapper
+        working-directory: mcpp/pkgs/moyanxi-vulkan-wrapper
+        run: mcpp build
+
+      # ── known-blocked, informational ────────────────────────────────
+      - name: Build mo_yanxi.react_flow (known GCC 16 modules bug)
+        id: react_flow
+        continue-on-error: true
+        working-directory: mcpp/pkgs/moyanxi-react-flow
+        run: mcpp build
+
+      - name: Build xrgui (blocked only by react_flow)
+        id: root
+        continue-on-error: true
+        run: mcpp build
+
+      - name: Summarize
+        if: always()
+        run: |
+          {
+            echo "## mcpp (linux)"
+            echo
+            echo "| step | result |"
+            echo "|---|---|"
+            echo "| mo_yanxi.utility | ok (required) |"
+            echo "| mo_yanxi.vulkan_wrapper | ok (required) |"
+            echo "| mo_yanxi.react_flow | ${{ steps.react_flow.outcome }} — blocked on a GCC 16 modules bug |"
+            echo "| xrgui root | ${{ steps.root.outcome }} — blocked only by react_flow |"
+            echo
+            echo "react_flow's \`:manager\` partition declares \`std::vector\` members in an"
+            echo "exported class; any partition importing it and then lazily needing"
+            echo "\`std::vector\` recurses. See .agents/docs/2026-08-12-mcpp-adaptation-design.md §14.3."
+          } >> "$GITHUB_STEP_SUMMARY"

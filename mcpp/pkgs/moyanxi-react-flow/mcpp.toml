@@ -15,7 +15,7 @@ module_extensions = [".ixx"]
 # （test/ examples/ benchmark/ 的 .cpp 不属于库）
 sources = ["../../../external/mo_yanxi_react_flow/src/**/*.ixx"]
 
-cxxflags = ["-Wno-interference-size"]
+cxxflags = ["-Wno-interference-size", "-Wno-changes-meaning"]
 
 [dependencies]
 utility = { path = "../moyanxi-utility" }

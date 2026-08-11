@@ -23,6 +23,12 @@ version = "2026.08.08"
 source  = "index+compat@2026.08.08"
 hash    = "fnv1a:40611099934b5eff"
 
+[package."compat.harfbuzz"]
+namespace = "compat"
+version = "14.3.0"
+source  = "index+compat@14.3.0"
+hash    = "fnv1a:5545f89caf9ec55d"
+
 [package."compat.khrplatform"]
 namespace = "compat"
 version = "2026.05.31"
@@ -34,6 +40,18 @@ namespace = "compat"
 version = "1.6.43"
 source  = "index+compat@1.6.43"
 hash    = "fnv1a:67e0ede48ca2cdb7"
+
+[package."compat.mimalloc"]
+namespace = "compat"
+version = "3.4.5"
+source  = "index+compat@3.4.5"
+hash    = "fnv1a:464aaf3f4063c017"
+
+[package."compat.msdfgen"]
+namespace = "compat"
+version = "1.13"
+source  = "index+compat@1.13"
+hash    = "fnv1a:78c92cffc0000ab5"
 
 [package."compat.opengl"]
 namespace = "compat"

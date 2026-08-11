@@ -303,10 +303,13 @@ public:
 	[[nodiscard]] sub_page() = default;
 
 	[[nodiscard]] explicit sub_page(
-		vk::allocator& allocator,
+		vk::allocator& alloc,
 		const VkExtent2D extent_2d
 	)
-	: texture(allocator, extent_2d), allocator({extent_2d.width, extent_2d.height}){
+	// The parameter is `alloc`, not `allocator`: this class already has an
+	// `allocator2d<> allocator` member, and using the one name for both makes
+	// GCC fail to parse `vk::allocator&` at all.
+	: texture(alloc, extent_2d), allocator({extent_2d.width, extent_2d.height}){
 	}
 
 	[[nodiscard]] explicit sub_page(

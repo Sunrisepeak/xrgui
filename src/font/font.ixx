@@ -590,7 +590,10 @@ private:
 	}
 
 	[[nodiscard]] static std::vector<std::byte> read_file(const wchar_t* fontpath) {
-		std::ifstream file(fontpath, std::ios::binary | std::ios::ate);
+		// std::ifstream has no const wchar_t* constructor -- that is an MSVC
+		// extension. std::filesystem::path accepts wide strings portably and
+		// the path overload below is the standard way in.
+		std::ifstream file(std::filesystem::path{fontpath}, std::ios::binary | std::ios::ate);
 		return read_file(file);
 	}
 

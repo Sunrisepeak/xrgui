@@ -999,3 +999,123 @@ MSVC 放行，GCC 报错（[basic.scope.class]）。命中 5 处：`image_view i
    侧同样是净收益）；扫描器的 M1 限制（条件 import / 头单元 / 私有片段诊断透传）
    向 mcpp 提 issue。
 4. **Windows 复验**：确认删掉头单元路径后 MSVC 构建仍然正常。
+
+---
+
+## 15. 第二轮实施（三个重库进索引之后）
+
+`compat.harfbuzz` / `compat.msdfgen` / `compat.mimalloc` 已合入 mcpp-index
+（[mcpplibs/mcpp-index#206](https://github.com/mcpplibs/mcpp-index/pull/206)，CI 全绿）。
+接上之后，根包越过了此前被缺库掩盖的一整层，**又暴露出 13 处源码问题**。
+
+### 15.1 结果
+
+```
+mcpp build →  1332 个对象 / 626 个 BMI
+              唯一失败：react_flow 的 :endpoint 与 :modifier 两个分区
+```
+
+**除 react_flow 外，源码符合性问题已全部清零。**
+
+### 15.2 依赖表改成点式 `ns.name`
+
+原先按命名空间拆成 `[dependencies]` + `[dependencies.compat]` +
+`[dependencies.neargye]` + `[dependencies.marzer]` 四段。现在合成一张表：
+
+```toml
+[dependencies]
+utility               = { path = "mcpp/pkgs/moyanxi-utility" }
+compat.glfw           = "3.4"
+compat.harfbuzz       = "14.3.0"
+marzer.tomlplusplus   = "3.4.0"
+neargye.magic_enum    = "0.9.8"
+```
+
+理由很简单：拆表把 12 条依赖散成 4 段，而它们的差别只是命名空间、不是角色，
+一眼看不全这个工程到底依赖什么。点式 selector 表达的是同一个精确身份
+（`compat.glfw` ⇒ `(compat, glfw)`），语义完全等价。
+
+`[feature-deps.tests]` 里的 `compat.gtest` 保持独立 —— 那是**角色**差异
+（feature 未激活时完全不解析），不是命名空间差异。
+
+### 15.3 这一轮修掉的 13 处
+
+| # | 问题 | 位置 | 性质 |
+|---|---|---|---|
+| 1 | `export` 了 `std::hash` / `std::formatter` 特化 | `color.ixx` ×2 | S3 复现 |
+| 2 | 用全局限定名 `struct ::std::hash<X>{…}` 做定义 | `color.ixx` ×2 | GCC 不接受 |
+| 3 | 类模板内定义友元函数模板 → 每次实例化都重定义 | `gui.alloc.ixx` ×2 | 真缺陷 |
+| 4 | `using` 写成自身注入类名而非基类 | `task_queue.ixx` | 真笔误 |
+| 5 | 自指的 requires 约束 | `instruction.general.ixx` | 见下 |
+| 6 | 模块声明后经 `#include` 引入 `import` | `allocator2d` | 硬性禁止 |
+| 7 | 依赖名缺 `typename` | `key_mapping_manager.ixx` ×2 | GCC 严格 |
+| 8 | `std::exception(const char*)` | `policy.ixx` | MSVC 扩展 |
+| 9 | `std::ifstream(const wchar_t*)` | `font.ixx` | MSVC 扩展 |
+| 10 | 已在 `namespace …::msdf` 内又写 `msdf::` 限定 | `msdf.cpp` ×4 | 非法限定 |
+| 11 | 构造参数与成员同名致 `vk::allocator&` 解析失败 | `image_atlas.util.ixx` | 见下 |
+| 12 | `-Wchanges-meaning` 大面积命中 | 全仓 | 见 §15.4 |
+| 13 | 裸 `size_t` | 见 §14 | 已修 |
+
+两处值得单独说：
+
+**#5 自指约束。** `quad_group` 的标量广播构造带
+`!std::convertible_to<const Ty&, quad_group>` —— 判定「能否转成 quad_group」
+必须先判定这个构造函数本身。GCC 报
+`satisfaction of atomic constraint … depends on itself`，MSVC 从不检查。
+换成非自指的 `!std::same_as<remove_cvref_t<Ty>, quad_group>` +
+`!spec_of<remove_cvref_t<Ty>, quad_group>`。**真正损失的**是「Ty 自带
+`operator quad_group<T>()`」这种 exotic 情形 —— 本代码库无此类型，而且要问这个
+问题就绕不开问这个构造函数。这一处在源码注释里写明了。
+
+**#6 allocator2d。** `allocator2d.ixx` 在 `export module` 之后 `#include`
+`allocator2d.hpp`，而该 header 自身发出 `import std;` / `import mo_yanxi.math.vector2;`。
+修法是把两条 import 提到 `.ixx` 里，并给 header 的副本加一道
+`MO_YANXI_ALLOCATOR_2D_EXTERNAL_IMPORTS` 门 —— 这样调用方可以声明「imports 我已做过」。
+补丁已进 `mcpp/patches/allocator2d.patch`。
+
+### 15.4 `-Wchanges-meaning`：从逐个修改为整体开关
+
+`vk::fence fence;`、`vk::instance instance;`、`interp interp{};`、
+`resource_entity resource_entity;` …… **「成员名与其类型同名」是这个代码库的
+普遍写法**。按 [basic.scope.class] 这是 ill-formed NDR，GCC 默认报错、MSVC 放行。
+
+先前（§14.3 类别 ⑥）我按「把类型写成限定名」逐个修了 5 处。接上三个重库后，
+命中面扩大到几十处，而且每一处都在别人的代码风格里。改用 GCC 为这个具体历史
+写法提供的开关：
+
+```toml
+cxxflags = ["-Wno-interference-size", "-Wno-changes-meaning"]
+```
+
+已经顺手限定掉的几处保持限定形式 —— 那是更好的写法，只是不值得为它做全仓机械改动。
+逐个限定仍是正解，但该由上游做。
+
+`#11` 是同一族的极端表现：`sub_page` 有成员 `allocator2d<> allocator`，
+构造参数又叫 `allocator`，GCC 在 `vk::allocator&` 处**直接解析失败**
+（`expected ')' before '&'`）而不是给出 changes-meaning 诊断。参数已改名 `alloc`。
+
+### 15.5 Linux CI
+
+新增 `.github/workflows/mcpp-linux.yml`，与既有的 `build_and_dispatch.yml`
+（Windows/MSVC via xmake）并行、互不干扰。
+
+任务划分刻意分成两档：
+
+- **required**：`mo_yanxi.utility` 与 `mo_yanxi.vulkan_wrapper` —— 它们是绿的，必须保持绿。
+- **continue-on-error**：`react_flow` 与根包 —— 这不是「忽略失败」，而是一句关于
+  **单一已知阻塞**的陈述。步骤照常运行、照常打印失败内容，所以新增的破坏在日志里可见；
+  只是不能拿一个编译器 bug 去 gate 分支。react_flow 能编的那天就把它改成 required。
+
+另外做了两件工程上必要的事：缓存 `~/.mcpp/registry/data` 与 `build-cache`
+（GCC 16 工具链加 compat.* 源码约 500 MB，且只在 pin 变动时才变），
+以及 `apt install libfontconfig1-dev`（`src/platform/font.ixx` 的 Linux 字体后端）。
+
+### 15.6 react_flow 仍是唯一阻塞
+
+结论未变，且这一轮又确认了一次：它不是「还没修」，是**七种规避全部无效的 GCC 16 bug**。
+xrgui 有三处 `export import mo_yanxi.react_flow;`（`scene.ixx` /
+`overlay_manager.ixx` / `text_tree.react_flow.ixx`），都在核心 GUI 层，绕不过去。
+
+下一步只有两条：给 GCC 提 bug（需要先剥一个最小复现），或者把 react_flow 的 6 个
+分区拆成独立命名模块。**后者不是机械改动** —— 同模块的分区之间可以看到彼此的
+非导出实体，拆成独立模块后只有 `export` 的才可见，需要逐个核对跨分区用法。

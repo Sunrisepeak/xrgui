@@ -33,7 +33,7 @@ defines = ["MO_YANXI_UTILITY_ENABLE_CHECK=0"]
 
 # hardware_destructive_interference_size 在 GCC 上是 ABI 警告，这里是包内自用，
 # 钉死成当前 tuning 的 64 字节即可，不必让它刷屏。
-cxxflags = ["-Wno-interference-size"]
+cxxflags = ["-Wno-interference-size", "-Wno-changes-meaning"]
 
 [targets.utility]
 kind = "lib"

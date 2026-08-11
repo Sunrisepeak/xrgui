@@ -865,7 +865,9 @@ struct associated_async_sync_task_queue : associated_async_sync_task_queue_base{
 		});
 	}
 
-	using associated_async_sync_task_queue::merge;
+	// The injected-class-name names THIS class, not the base -- GCC:
+	// "is not a base type for type". The base is the _base suffix one.
+	using associated_async_sync_task_queue_base::merge;
 
 };
 

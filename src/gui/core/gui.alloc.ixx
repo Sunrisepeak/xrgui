@@ -118,12 +118,19 @@ struct heap_allocator : mi_heap_stl_allocator<T>{
     auto select_on_container_copy_construction() const { return *this; }
 
 
-    template<class T1, class T2>
-    friend bool operator==(const heap_allocator<T1>& lhs, const heap_allocator<T2>& rhs) noexcept{
-        return static_cast<const mi_heap_stl_allocator<T1>&>(lhs) == static_cast<const mi_heap_stl_allocator<T2>&>(rhs);
-    }
-
 };
+
+// Defined at namespace scope, not as a friend inside the class template.
+// A friend function TEMPLATE defined inside a class template is redefined by
+// every instantiation of the enclosing template when its own signature does
+// not depend on the enclosing parameters -- GCC reports
+// "redefinition of template<class T1, class T2> bool operator==".
+// Friendship was never needed: mi_heap_stl_allocator is a public base.
+export
+template <class T1, class T2>
+bool operator==(const heap_allocator<T1>& lhs, const heap_allocator<T2>& rhs) noexcept{
+    return static_cast<const mi_heap_stl_allocator<T1>&>(lhs) == static_cast<const mi_heap_stl_allocator<T2>&>(rhs);
+}
 
 export
 template <typename T = std::byte>
@@ -138,11 +145,14 @@ struct unvs_allocator : mi_stl_allocator<T>{
     template <class U> struct rebind { typedef unvs_allocator<U> other; };
     auto select_on_container_copy_construction() const { return *this; }
 
-    template<class T1, class T2>
-    friend bool operator==(const unvs_allocator<T1>& lhs, const unvs_allocator<T2>& rhs) noexcept{
-        return static_cast<const mi_stl_allocator<T1>&>(lhs) == static_cast<const mi_stl_allocator<T2>&>(rhs);
-    }
 };
+
+// Namespace scope, same reason as heap_allocator's operator== above.
+export
+template <class T1, class T2>
+bool operator==(const unvs_allocator<T1>& lhs, const unvs_allocator<T2>& rhs) noexcept{
+    return static_cast<const mi_stl_allocator<T1>&>(lhs) == static_cast<const mi_stl_allocator<T2>&>(rhs);
+}
 
 export
 template <typename T, std::size_t align>

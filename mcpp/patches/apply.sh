@@ -35,3 +35,5 @@ apply_one external/mo_yanxi_vulkan_wrapper \
           mcpp/patches/mo_yanxi_vulkan_wrapper.patch
 apply_one external/mo_yanxi_vulkan_wrapper/external/mo_yanxi_utility \
           mcpp/patches/mo_yanxi_utility.patch
+apply_one external/allocator2d \
+          mcpp/patches/allocator2d.patch
