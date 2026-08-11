@@ -120,10 +120,25 @@ index eccd6c8..2a15d91 100644
  
  template <std::size_t Idx, typename ArgsTuple>
 diff --git a/src/utility/math/basic/vector2.ixx b/src/utility/math/basic/vector2.ixx
-index 277a118..0277709 100644
+index 277a118..0fbadfc 100644
 --- a/src/utility/math/basic/vector2.ixx
 +++ b/src/utility/math/basic/vector2.ixx
-@@ -1364,7 +1364,9 @@ struct std::hash<mo_yanxi::math::vector2<T>>{
+@@ -651,7 +651,13 @@ namespace mo_yanxi::math{
+ 			return math::sqrt(this->scalar_proj2(axis));
+ 		}
+ 
+-		FORCE_INLINE friend constexpr bool operator==(const vector2& lhs, const vector2& rhs) noexcept = default;
++		// A MEMBER defaulted comparison, not a hidden friend. A defaulted friend
++		// defined inside a class template gets emitted twice for the same
++		// specialization under GCC modules, and the assembler rejects the second:
++		//   Error: symbol '_ZN8mo_yanxi4mathW...vector2eqERK...vector2IjEES7_'
++		//          is already defined
++		// The member form is the C++20 idiom and synthesises the same == and !=.
++		[[nodiscard]] constexpr bool operator==(const vector2& rhs) const noexcept = default;
+ 
+ 		FORCE_INLINE constexpr vector2& clamp_x(const T min, const T max) noexcept {
+ 			x = math::clamp(x, min, max);
+@@ -1364,7 +1370,9 @@ struct std::hash<mo_yanxi::math::vector2<T>>{
  	}
  };
  
@@ -134,7 +149,7 @@ index 277a118..0277709 100644
  template <>
  struct std::hash<mo_yanxi::math::vector2<int>>{
  	static std::size_t operator()(mo_yanxi::math::vector2<int>::const_pass_t v) noexcept{
-@@ -1372,7 +1374,9 @@ struct std::hash<mo_yanxi::math::vector2<int>>{
+@@ -1372,7 +1380,9 @@ struct std::hash<mo_yanxi::math::vector2<int>>{
  	}
  };
  

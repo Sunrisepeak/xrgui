@@ -171,22 +171,39 @@ public:
 		return (unsigned)(blend_states.size() / blending_state_count);
 	}
 
-	template <typename S>
-	auto& operator[](this S& self, const unsigned attachment_idx, const unsigned blending_state_idx) noexcept{
-		assert(blending_state_idx < self.blending_state_count);
-		return self.blend_states[attachment_idx * self.blending_state_count + blending_state_idx];
+	// Ordinary const/non-const overload pairs rather than deducing-this
+	// templates. GCC 16 writes a BMI for this module that it then cannot read
+	// back ("failed to read compiled module cluster N: Bad file data") when
+	// these are `template <typename S> ... (this S& self, ...)`. The pairs are
+	// more typing and no less correct.
+	VkPipelineColorBlendAttachmentState& operator[](
+		const unsigned attachment_idx, const unsigned blending_state_idx) noexcept{
+		assert(blending_state_idx < blending_state_count);
+		return blend_states[attachment_idx * blending_state_count + blending_state_idx];
 	}
 
-	template <typename S>
-	[[nodiscard]] auto get_state_of(this S& self, const unsigned attachment_idx) noexcept{
-		// With an explicit object parameter there is no implicit `this`, so the
-		// member has to be named through `self` -- as the two lines above already do.
-		return std::span{self.blend_states.data() + attachment_idx * self.blending_state_count, self.blending_state_count};
+	const VkPipelineColorBlendAttachmentState& operator[](
+		const unsigned attachment_idx, const unsigned blending_state_idx) const noexcept{
+		assert(blending_state_idx < blending_state_count);
+		return blend_states[attachment_idx * blending_state_count + blending_state_idx];
 	}
 
-	template <typename S>
-	[[nodiscard]] auto get_state_range(this S& self) noexcept {
-		return self.blend_states | std::views::chunk(self.blending_state_count);
+	[[nodiscard]] std::span<VkPipelineColorBlendAttachmentState> get_state_of(
+		const unsigned attachment_idx) noexcept{
+		return std::span{blend_states.data() + attachment_idx * blending_state_count, blending_state_count};
+	}
+
+	[[nodiscard]] std::span<const VkPipelineColorBlendAttachmentState> get_state_of(
+		const unsigned attachment_idx) const noexcept{
+		return std::span{blend_states.data() + attachment_idx * blending_state_count, blending_state_count};
+	}
+
+	[[nodiscard]] auto get_state_range() noexcept {
+		return blend_states | std::views::chunk(blending_state_count);
+	}
+
+	[[nodiscard]] auto get_state_range() const noexcept {
+		return blend_states | std::views::chunk(blending_state_count);
 	}
 };
 
@@ -583,15 +600,24 @@ protected:
 
 
 public:
-	template <typename S>
-	[[nodiscard]] auto get_pipelines(this S& self) noexcept{
-		return std::span{self.pipelines};
+	// const/non-const pairs rather than deducing-this -- see the note in
+	// dynamic_blending_config.
+	[[nodiscard]] auto get_pipelines() noexcept{
+		return std::span{pipelines};
 	}
 
-	template <typename S>
-	[[nodiscard]] auto& get_custom_descriptor(this S& self, std::size_t index){
-		assert(index < self.custom_descriptors.size());
-		return self.custom_descriptors[index];
+	[[nodiscard]] auto get_pipelines() const noexcept{
+		return std::span{pipelines};
+	}
+
+	[[nodiscard]] auto& get_custom_descriptor(std::size_t index){
+		assert(index < custom_descriptors.size());
+		return custom_descriptors[index];
+	}
+
+	[[nodiscard]] const auto& get_custom_descriptor(std::size_t index) const{
+		assert(index < custom_descriptors.size());
+		return custom_descriptors[index];
 	}
 
 	[[nodiscard]] std::size_t get_custom_descriptor_count() const noexcept{
