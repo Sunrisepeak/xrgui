@@ -43,7 +43,7 @@ include_dirs = [
   "external/gtl/include",
   "external/miniaudio",
   "external/spirv_reflect",
-  "external/nanosvg",                       # 代码写的是 <nanosvg/nanosvg.h>
+  "mcpp/shims",                             # 代码写的是 <nanosvg/nanosvg.h>，见下方 generated_files
   "external/mo_yanxi_vulkan_wrapper/external/VulkanMemoryAllocator/include",
 ]
 
@@ -62,16 +62,18 @@ defines = [
 # 当前 tuning 就是 64 字节，不必让它刷屏。
 cxxflags = ["-Wno-interference-size"]
 
-# nanosvg 的头文件在 external/nanosvg/src/，但 include 写法是 <nanosvg/nanosvg.h>；
-# 生成一个薄转发头，避免为一个上游布局去改所有调用点。
+# nanosvg 的头文件在 external/nanosvg/src/，但调用点写的是 <nanosvg/nanosvg.h>。
+# 生成一对薄转发头，避免为一个上游布局去改所有调用点。
+# 刻意生成到 mcpp/shims/ 而不是 external/nanosvg/ 内部：往 submodule 的工作树里
+# 写文件会让它常驻 dirty，构建不该弄脏别人的仓库。
 [generated_files]
-"external/nanosvg/nanosvg/nanosvg.h" = """
+"mcpp/shims/nanosvg/nanosvg.h" = """
 #pragma once
-#include "../src/nanosvg.h"
+#include "../../../external/nanosvg/src/nanosvg.h"
 """
-"external/nanosvg/nanosvg/nanosvgrast.h" = """
+"mcpp/shims/nanosvg/nanosvgrast.h" = """
 #pragma once
-#include "../src/nanosvgrast.h"
+#include "../../../external/nanosvg/src/nanosvgrast.h"
 """
 
 [dependencies]
