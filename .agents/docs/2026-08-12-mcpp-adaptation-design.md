@@ -1196,3 +1196,58 @@ GCC 侧复验仍绿。这条已补进 mcpp-community/mcpp#421。
 （`properties/assets_raw/gen/` 由 `xmake xrgui.gen_icon` 产出、不入仓），
 `gui.assets.cpp` 只要求这个头**存在**，空的能编过，这正是让整棵树不需要
 Python/Node/slangc 就能构建的前提。
+
+---
+
+## 17. react_flow 解决了 —— 在项目侧，不在编译器侧
+
+§16 的结论是「GCC 侧无解、项目侧只能部分解决」。**两条都被推翻了**，推翻它的是一个很朴素的问题：
+*这套实现有 bug，那换一种实现呢？*
+
+### 17.1 做法：消掉 `:manager` 分区
+
+那个 bug 出在**分区 BMI 的流式化**上。所以让它没有 BMI 可流式化 ——
+把 `manager.ixx` 的内容并进 `:node_interface`（所有相关分区本来就 import 它），
+删掉 `:manager` 这个分区。
+
+```
+mcpp build (react_flow, 冷构建 --cache off)
+    Finished dev in 4.30s        74 个 BMI，零错误
+```
+
+**`recursive lazy load` 彻底消失。** 不是绕过、不是抑制 —— 触发它的结构不存在了。
+
+### 17.2 顺带发现两处真实的依赖缺陷
+
+查「谁真的需要 `:manager`」时暴露出来的：
+
+- **`:endpoint` / `:modifier` 根本不需要它。** `manager` 只出现在 `friend manager;`
+  和 `on_pulse_received(manager& m)` 的引用参数上，而**三个函数体一次都没碰过 `m`**；
+  `:node_interface` 早就有 `export struct manager;` 前向声明。去掉这两个 import
+  后它们立刻编过 —— 这是本来就不该有的依赖。
+- **7 个文件缺 `import mo_yanxi.vk.util;`。** `vk::allocator` / `vk::allocator_usage`
+  住在 `mo_yanxi::vk` 命名空间，却由 `mo_yanxi.vk.util` **模块**提供，而
+  `mo_yanxi.vk` 并不重导出它。MSVC 放行了这个缺口，GCC 不放。
+
+两处都是**依赖卫生问题**，与编译器 bug 无关，修了对 xmake 侧同样有效。
+
+### 17.3 与编译器侧的对照
+
+| 路径 | 结果 |
+|---|---|
+| 改 GCC 的守卫（`attempt/relax-lazy-guard`） | ⛔ 换来 ICE，测试套件 4→17 失败 |
+| **消掉分区（本节）** | ✅ **冷构建全绿** |
+
+编译器那条路走不通的原因写在 `mcpp-community/mcpp-gcc` 里：守卫同时守着 section
+顺序**和**类定义期状态，只放宽前者会让成员被塞进半成品类。
+
+**这不改变「GCC 有 bug」这个事实** —— GCC 17 trunk 仍然复现，报告仍然该提。
+改变的是：xrgui 不必等它。
+
+### 17.4 代价与取舍
+
+`:manager` 并进 `:node_interface` 后，后者从 780 行涨到约 1190 行。这是真实的代价：
+一个分区的边界没了。换来的是整个项目能在 Linux 上构建。
+
+如果将来 GCC 修好了，这次合并可以原样回滚 —— 补丁在
+`mcpp/patches/mo_yanxi_react_flow.patch` 里，是自包含的。

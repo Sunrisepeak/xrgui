@@ -15,6 +15,10 @@ export import mo_yanxi.referenced_ptr;
 export import mo_yanxi.handle_wrapper;
 
 import mo_yanxi.vk;
+// `vk::allocator` / `vk::allocator_usage` live in the mo_yanxi::vk namespace but
+// are provided by the mo_yanxi.vk.util MODULE, which mo_yanxi.vk does not
+// re-export. Importing it is what makes those names nameable here.
+import mo_yanxi.vk.util;
 import mo_yanxi.allocator2d;
 import mo_yanxi.log;
 

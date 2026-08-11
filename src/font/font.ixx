@@ -703,30 +703,4 @@ struct std::hash<mo_yanxi::font::glyph_identity>{ // NOLINT(*-dcl58-cpp)
 	}
 };
 
-// The private module fragment (`module : private;`) that used to be here is
-// removed, for two independent reasons:
-//
-//  1. It was ill-formed. A module unit with a private-module-fragment must be
-//     the ONLY module unit of its module ([module.unit]) -- but mo_yanxi.font
-//     also has font.cpp (`module mo_yanxi.font;`). IFNDR, so nobody had to
-//     tell us.
-//  2. GCC 16 has not implemented the feature at all: plain compilation says
-//     "sorry, unimplemented: private module fragment", and the P1689 scan path
-//     reports it as the far more confusing "module already declared".
-//
-// Dropping it only makes these definitions reachable to importers (a slightly
-// larger BMI); nothing else changes.
-
-
-void mo_yanxi::font::check(FT_Error error){
-	if(!error) return;
-
-#if DEBUG_CHECK
-	const char* err = FT_Error_String(error);
-	log::error({"Freetype"}, "error {}: {}", error, err);
-#else
-	log::error({"Freetype"}, "error {}", error);
-#endif
-
-	throw std::runtime_error("Freetype Failed");
-}
+// `check`'s definition lives in font.cpp -- see the note there.
