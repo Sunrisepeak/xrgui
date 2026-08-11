@@ -969,9 +969,16 @@ MSVC 放行，GCC 报错（[basic.scope.class]）。命中 5 处：`image_view i
   改派生自 `std::runtime_error`，顺带修掉 `string_view::data()` 未必 NUL 结尾的隐患。
 - 裸 `size_t`（4 处）→ `std::size_t`。`import std;` 下 `::size_t` 不保证可见。
 - `import :call_stream_buffer;` → `export import`：接口分区必须由主接口单元导出。
-- `module : private;`（1 处）：mcpp 扫描器读成第二个模块声明并报
-  `module already declared`。**这是 mcpp 的 bug**，暂时删掉该行（只是让这些定义对
-  导入方可达，语义无损），应向 mcpp 提 issue。
+- `module : private;`（1 处，**归因已更正**）：报错来自 **GCC 而非 mcpp**。用 5 行
+  文件逐字复现 mcpp 的扫描命令后可见，GCC 16 **根本没实现**私有模块片段：编译路径
+  给的是清楚的 `sorry, unimplemented: private module fragment`，而 P1689 扫描路径
+  （`-fdeps-format=p1689r5 … -E`）对同一件事给的是误导性的 `module already declared`。
+  mcpp 只是透传。
+
+  **而且这处用法本身就不合规**：private module fragment 是 C++20 特性（[module.unit]），
+  但「带私有片段的模块单元必须是该模块唯一的模块单元」。`mo_yanxi.font` 有两个 ——
+  `font.ixx`（主接口）与 `font.cpp`（`module mo_yanxi.font;` 实现单元）—— 所以这是
+  IFNDR。删掉该行修的是真问题，不是绕过工具。
 
 ### 14.4 与设计的偏差
 
@@ -989,5 +996,6 @@ MSVC 放行，GCC 报错（[basic.scope.class]）。命中 5 处：`image_view i
    （难度递增）。这是根包链接成功前唯一剩下的工作。
 2. **react_flow**：向 GCC 提 bug；同时评估把 6 个分区拆成独立命名模块的代价。
 3. **上游化**：三份源码补丁向 `Yuria-Shikibe/*` 提 PR（全是可移植性修复，对 xmake
-   侧同样是净收益）；`module : private;` 与扫描器行为向 mcpp 提 issue。
+   侧同样是净收益）；扫描器的 M1 限制（条件 import / 头单元 / 私有片段诊断透传）
+   向 mcpp 提 issue。
 4. **Windows 复验**：确认删掉头单元路径后 MSVC 构建仍然正常。
