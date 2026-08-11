@@ -1119,3 +1119,80 @@ xrgui 有三处 `export import mo_yanxi.react_flow;`（`scene.ixx` /
 下一步只有两条：给 GCC 提 bug（需要先剥一个最小复现），或者把 react_flow 的 6 个
 分区拆成独立命名模块。**后者不是机械改动** —— 同模块的分区之间可以看到彼此的
 非导出实体，拆成独立模块后只有 `export` 的才可见，需要逐个核对跨分区用法。
+
+---
+
+## 16. clang 实验：越过了 GCC bug，却撞上 libc++
+
+在 Linux 上把工具链换成 `llvm@20.1.7` / `llvm@22.1.8` 试了一轮。结论有两条，都值得记下。
+
+### 16.1 `recursive lazy load` 是 **GCC 独有的**
+
+**clang 完整编过了 react_flow。** 冷构建（`--cache off`，删掉 `target/` 与 `.mcpp/`），
+`:endpoint` 与 `:modifier` 两个 PCM 都正常产出：
+
+```
+Resolved llvm@22.1.8 → …/bin/clang++
+Compiling react_flow v0.1.0 (.)
+Compiling utility (path)
+Finished dev in 1.17s
+  → pcm.cache/mo_yanxi.react_flow-endpoint.pcm
+  → pcm.cache/mo_yanxi.react_flow-modifier.pcm
+```
+
+这一条把 §15.6 的判断钉死了：那不是代码问题，是 **GCC 16 模块实现的 bug**，
+换一个实现就没有。给 GCC 提 bug 时这是最有力的一句。
+
+继续往下，clang 越过了**整棵树**（含全部第三方与 196 个模块），最后只停在
+`assets_summary.h` 找不到 —— 那是本设计 §8.3 里一直没实现的资产管线，与编译器无关。
+
+### 16.2 但 libc++ 落后太多，clang 不能作为近期绕道
+
+补上 `build.mcpp` 之后，clang 暴露的是另一类问题：**libc++ 尚未实现本代码库大量使用的
+C++23 库特性**。
+
+| 特性 | libstdc++ | libc++ | 本仓用量 |
+|---|:--:|:--:|---:|
+| `std::move_only_function` | ✓ | ✗ | 33 |
+| `std::views::enumerate` | ✓ | ✗ | 46 |
+| `std::views::stride` | ✓ | ✗ | 11 |
+| `std::views::slide` | ✓ | ✗ | 3 |
+| `std::is_pointer_interconvertible_with_class` | ✓ | ✗ | 4 |
+| `std::const_iterator`（P2278 的**全局别名模板**，非 `Container::const_iterator` 成员类型） | ✓ | ✗ | 3 |
+
+**合计约 100 处**，且都是标准库缺口而非本仓代码问题 —— 不是能补 shim 的量级
+（`move_only_function` 与三个 range adaptor 各自都是完整设施）。
+
+llvm 20 与 22 的 libc++ 都一样缺。**结论：GCC 仍是 Linux 上唯一可行的工具链，
+react_flow 仍然阻塞。** clang 的价值在于它定位了 bug 的归属，不在于它能顶替。
+
+> 若将来 mcpp 支持 clang + libstdc++ 组合（Linux 上的经典搭配），这个结论要重算 ——
+> 那时缺的这些设施都由 libstdc++ 提供，而 GCC 的模块 bug 又不在 clang 前端里。
+
+### 16.3 顺带查出一个 mcpp scanner 的真 bug：UTF-8 BOM
+
+clang 一开始报的是这个：
+
+```
+error: unable to open output file '': 'No such file or directory'
+```
+
+空的输出路径。追下去是 **UTF-8 BOM**：仓库里 8 个源文件以 `EF BB BF` 开头，
+mcpp 的扫描器因此认不出紧随其后的 `export module …`，模块名为空，
+clang 的 `-fmodule-output=` 就拿到了空串。
+
+**这个只在 clang 下暴露** —— GCC 的 BMI 按模块名存进 `gcm.cache/`，不走这条路径，
+所以一直没人发现。已剥掉参与构建的 5 个文件的 BOM（`legacy/` 下 3 个不参与构建，未动），
+GCC 侧复验仍绿。这条已补进 mcpp-community/mcpp#421。
+
+### 16.4 `build.mcpp` 落地
+
+§8.3 设计的资产管线已实现：扫 `properties/assets_raw/gen/**/*.svg` → bin2c →
+聚合 `assets_summary.h`，全部写进 `MCPP_OUT_DIR`，不碰源码树。
+
+三个细节：bin2c 就是十几行，比依赖 xmake 的 `utils.binary.bin2c` 更简单；
+输出按文件名排序，否则目录遍历顺序不定会让内容哈希抖动、连累每个消费者重编；
+**没有 SVG 时也照样生成空的 summary** —— 那正是全新检出的状态
+（`properties/assets_raw/gen/` 由 `xmake xrgui.gen_icon` 产出、不入仓），
+`gui.assets.cpp` 只要求这个头**存在**，空的能编过，这正是让整棵树不需要
+Python/Node/slangc 就能构建的前提。

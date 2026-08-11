@@ -1,0 +1,152 @@
+// Build-time asset codegen — the mcpp counterpart of xmake.lua's
+// `media.svg_to_bin` rule plus its `before_build` hook.
+//
+// Two outputs, both under MCPP_OUT_DIR/.assets/includes:
+//
+//   <rel>.svg.h          one bin2c byte list per normalized SVG, meant to be
+//                        #include'd INSIDE a `char[] = { … }` initializer
+//   assets_summary.h     the aggregate gui.assets.cpp includes, declaring one
+//                        `constexpr inline char[]` per SVG, namespaced by the
+//                        SVG's directory
+//
+// bin2c is a dozen lines here rather than an external tool, which is simpler
+// than xmake's `utils.binary.bin2c` dependency and removes one more reason to
+// need a host toolchain just to build.
+//
+// The generated tree is written to the OUTPUT directory, never into
+// properties/ -- a build must not dirty the source tree.
+//
+// Note the summary is emitted even when there are no SVGs at all. That is the
+// normal state of a fresh checkout: properties/assets_raw/gen/ is produced by
+// `xmake xrgui.gen_icon` and is not committed. gui.assets.cpp only needs the
+// header to EXIST; an empty one compiles, which is what lets the tree build
+// without Python/Node/slangc. See .agents/docs/2026-08-12-mcpp-adaptation-design.md §8.
+import mcpp;
+import std;
+
+namespace {
+
+std::string sanitize(std::string_view s) {
+    std::string out;
+    out.reserve(s.size());
+    for (const char c : s) {
+        out.push_back((c == '.' || c == '-') ? '_' : c);
+    }
+    return out;
+}
+
+// Directory path -> C++ namespace name: `icons/ui` becomes `icons::ui`,
+// matching xmake.lua's `dir:gsub("[\\/]", "::"):gsub("[%.%-]", "_")`.
+std::string namespace_of(const std::filesystem::path& rel_dir) {
+    std::string out;
+    for (const auto& part : rel_dir) {
+        if (!out.empty()) out += "::";
+        out += sanitize(part.string());
+    }
+    return out;
+}
+
+// Write `<file>` as a comma-separated byte list. The result is #include'd
+// inside a braced initializer, so it must NOT carry braces of its own.
+bool write_bin2c(const std::filesystem::path& src, const std::filesystem::path& dst) {
+    std::ifstream in(src, std::ios::binary);
+    if (!in) return false;
+
+    std::filesystem::create_directories(dst.parent_path());
+    std::ofstream out(dst, std::ios::trunc);
+    if (!out) return false;
+
+    char byte{};
+    for (std::size_t n = 0; in.get(byte); ++n) {
+        if (n != 0) out << ',';
+        if (n % 16 == 0) out << '\n';
+        out << static_cast<int>(static_cast<unsigned char>(byte));
+    }
+    out << '\n';
+    return true;
+}
+
+// Only rewrite when the content actually differs: the summary is an input to
+// every TU that includes it, so touching it on every build would defeat
+// incremental compilation.
+void write_if_changed(const std::filesystem::path& path, std::string_view content) {
+    if (std::ifstream in{path}; in) {
+        const std::string existing{std::istreambuf_iterator<char>{in},
+                                   std::istreambuf_iterator<char>{}};
+        if (existing == content) return;
+    }
+    std::filesystem::create_directories(path.parent_path());
+    std::ofstream{path, std::ios::trunc} << content;
+}
+
+} // namespace
+
+int main() {
+    const std::filesystem::path root = mcpp::manifest_dir();
+    const std::filesystem::path src_base = root / "properties/assets_raw/gen";
+    const std::filesystem::path out_dir =
+        std::filesystem::path{mcpp::out_dir()} / ".assets/includes";
+
+    std::filesystem::create_directories(out_dir);
+
+    std::vector<std::filesystem::path> svgs;
+    if (std::filesystem::is_directory(src_base)) {
+        for (const auto& e : std::filesystem::recursive_directory_iterator{src_base}) {
+            if (e.is_regular_file() && e.path().extension() == ".svg") {
+                svgs.push_back(e.path());
+            }
+        }
+    }
+    // Directory iteration order is unspecified; the summary must be stable or
+    // its content hash flaps and every consumer rebuilds.
+    std::ranges::sort(svgs);
+
+    std::string summary = "#pragma once\n";
+
+    for (const auto& svg : svgs) {
+        const auto rel = std::filesystem::relative(svg, src_base);
+        const auto header_rel = std::filesystem::path{rel.string() + ".h"};
+        const auto header_abs = out_dir / header_rel;
+
+        std::error_code ec;
+        const auto src_time = std::filesystem::last_write_time(svg, ec);
+        const auto dst_time = std::filesystem::last_write_time(header_abs, ec);
+        if (ec || !std::filesystem::exists(header_abs) || dst_time < src_time) {
+            if (!write_bin2c(svg, header_abs)) {
+                std::println("build.mcpp: cannot convert {}", svg.string());
+                return 1;
+            }
+        }
+
+        // Always spelled with '/' -- this string lands in a #include.
+        std::string inc = header_rel.generic_string();
+        const std::string ns = namespace_of(rel.parent_path());
+        const std::string var = sanitize(rel.filename().string());
+
+        if (!ns.empty()) summary += std::format("namespace {} {{\n", ns);
+        summary += std::format(
+            "#if __has_include(\"{0}\")\n"
+            "constexpr inline char {1}[] = {{\n"
+            "#include \"{0}\"\n"
+            "}};\n"
+            "#else\n"
+            "constexpr inline char {1}[] = {{}};\n"
+            "#endif\n",
+            inc, var);
+        if (!ns.empty()) summary += std::format("}} // namespace {}\n", ns);
+    }
+
+    write_if_changed(out_dir / "assets_summary.h", summary);
+
+    // Private to this package -- consumers of xrgui have no business seeing
+    // the generated tree.
+    mcpp::include_dir(out_dir.string().c_str());
+
+    // The SET of files matters, not just their contents: adding an icon has to
+    // regenerate the summary, and a plain rerun-if-changed on a directory
+    // would not catch it.
+    mcpp::rerun_if_changed_glob("properties/assets_raw/gen/**/*.svg");
+
+    std::println("build.mcpp: {} svg asset(s) -> {}", svgs.size(), out_dir.string());
+    return 0;
+}

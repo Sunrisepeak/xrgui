@@ -84,17 +84,23 @@ cxxflags = ["-Wno-interference-size", "-Wno-changes-meaning"]
 #include "../../../external/nanosvg/src/nanosvgrast.h"
 """
 
-# 全部依赖写在一张表里，用点式 `ns.name` 精确身份。
-# 相比按命名空间拆 [dependencies.compat] / [dependencies.neargye] / …，
-# 好处是一眼能看全这个工程到底依赖什么 —— 拆表的写法会把 12 条依赖散成 4 段，
-# 而它们的区别只是命名空间，不是角色。
+# 一张 [dependencies] 表，全部用点式 `ns.name` 精确身份 —— 不再按命名空间拆成
+# [dependencies.compat] / [dependencies.neargye] / [dependencies.marzer] 三段。
+# 拆表把 12 条依赖散成几段，而它们的差别只是命名空间、不是角色，一眼看不全这个
+# 工程到底依赖什么。点式 selector 表达的是同一个精确身份（compat.glfw ⇒
+# (compat, glfw)），语义完全等价。
+#
+# 表内按**来源**分两组，因为那才是真正的角色差异：内部包随本仓一起演进、改了
+# 立刻生效；外部包是钉版本的第三方，升级是一次独立决策。
+
+# ── 内部依赖：本仓过渡期薄包（见 .agents/docs 的 §4.3）───────────
+#    上游化后这三条改成指向 submodule 自身，其余不变。
 [dependencies]
-# ── 本仓过渡期薄包（见 .agents/docs 的 §4.3）──────────
 utility        = { path = "mcpp/pkgs/moyanxi-utility" }
 react_flow     = { path = "mcpp/pkgs/moyanxi-react-flow" }
 vulkan_wrapper = { path = "mcpp/pkgs/moyanxi-vulkan-wrapper" }
 
-# ── 索引包 ────────────────────────────────────────────
+# ── 外部依赖：mcpp-index 包 ──────────────────────────────────────
 compat.glfw           = "3.4"
 compat.freetype       = "2.13.3"
 compat.vulkan         = "1.4.357.0"     # 自动带出 compat.vulkan-headers

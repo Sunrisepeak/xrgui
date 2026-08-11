@@ -35,6 +35,16 @@ index a297bbe..ccfbe15 100644
  	math::point2 offset;
  };
  
+diff --git a/src/vk_wrap/objects/sync.ixx b/src/vk_wrap/objects/sync.ixx
+index eb8811a..66f2c4e 100644
+--- a/src/vk_wrap/objects/sync.ixx
++++ b/src/vk_wrap/objects/sync.ixx
+@@ -1,4 +1,4 @@
+-﻿module;
++module;
+ 
+ #include <cassert>
+ #include <vulkan/vulkan.h>
 diff --git a/src/vk_wrap/stack_trace.cpp b/src/vk_wrap/stack_trace.cpp
 index 795c514..8e1967a 100644
 --- a/src/vk_wrap/stack_trace.cpp
@@ -131,3 +141,13 @@ index 99ad0b5..5115ae4 100644
  		}
  	};
  }
+diff --git a/src/vk_wrap/util/validation.ixx b/src/vk_wrap/util/validation.ixx
+index 67febae..a263f27 100644
+--- a/src/vk_wrap/util/validation.ixx
++++ b/src/vk_wrap/util/validation.ixx
+@@ -1,4 +1,4 @@
+-﻿module;
++module;
+ 
+ #include <vulkan/vulkan.h>
+ 

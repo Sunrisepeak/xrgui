@@ -1,3 +1,33 @@
+diff --git a/src/utility/container/array_queue.ixx b/src/utility/container/array_queue.ixx
+index 573039a..e5a24c6 100644
+--- a/src/utility/container/array_queue.ixx
++++ b/src/utility/container/array_queue.ixx
+@@ -1,4 +1,4 @@
+-﻿export module mo_yanxi.ext.array_queue;
++export module mo_yanxi.ext.array_queue;
+ 
+ import std;
+ 
+diff --git a/src/utility/container/array_stack.ixx b/src/utility/container/array_stack.ixx
+index e8c0a82..1bdca42 100644
+--- a/src/utility/container/array_stack.ixx
++++ b/src/utility/container/array_stack.ixx
+@@ -1,4 +1,4 @@
+-﻿export module mo_yanxi.array_stack;
++export module mo_yanxi.array_stack;
+ 
+ import std;
+ 
+diff --git a/src/utility/generic/basic_util.ixx b/src/utility/generic/basic_util.ixx
+index 4f0b1bd..fa35081 100644
+--- a/src/utility/generic/basic_util.ixx
++++ b/src/utility/generic/basic_util.ixx
+@@ -1,4 +1,4 @@
+-﻿module;
++module;
+ 
+ #include <cassert>
+ #include "mo_yanxi/adapted_attributes.hpp"
 diff --git a/src/utility/generic/function_manipulate.ixx b/src/utility/generic/function_manipulate.ixx
 index a1d7a71..0f05efe 100644
 --- a/src/utility/generic/function_manipulate.ixx
