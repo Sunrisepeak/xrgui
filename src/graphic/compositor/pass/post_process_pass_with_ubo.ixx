@@ -5,6 +5,9 @@
 export module mo_yanxi.graphic.compositor.post_process_pass_with_ubo;
 
 import std;
+// vk::allocator_usage is in the mo_yanxi::vk namespace but comes from the
+// mo_yanxi.vk.util MODULE, which mo_yanxi.vk does not re-export.
+import mo_yanxi.vk.util;
 import mo_yanxi.meta_programming;
 export import mo_yanxi.graphic.compositor.post_process_pass;
 

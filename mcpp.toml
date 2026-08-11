@@ -153,7 +153,10 @@ ldflags = ["-ladvapi32", "-limm32", "-lole32", "-lshell32", "-luser32"]
 
 [toolchain]
 default = "gcc@16.1.0"
-windows = "llvm@20.1.7"
+# Windows 用 MSVC：这个项目本来就是 MSVC-first，上游 xmake 的 MSVC CI 是绿的
+# （Yuria-Shikibe/xrgui），所以 mcpp 侧没有理由在 Windows 上换一个未经验证的前端。
+# mcpp 的 x86_64-windows-msvc 目标会探测已安装的 VS/BuildTools。
+windows = "msvc@system"
 macos   = "llvm@22.1.8"
 
 [profile.release]

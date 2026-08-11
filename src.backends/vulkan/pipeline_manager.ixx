@@ -179,7 +179,9 @@ public:
 
 	template <typename S>
 	[[nodiscard]] auto get_state_of(this S& self, const unsigned attachment_idx) noexcept{
-		return std::span{self.blend_states.data() + attachment_idx * blending_state_count, blending_state_count};
+		// With an explicit object parameter there is no implicit `this`, so the
+		// member has to be named through `self` -- as the two lines above already do.
+		return std::span{self.blend_states.data() + attachment_idx * self.blending_state_count, self.blending_state_count};
 	}
 
 	template <typename S>
