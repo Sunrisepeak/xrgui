@@ -878,7 +878,7 @@ Vulkan ICD 同类的问题，两条出路：(a) `[xlings] deps = ["fontconfig"]`
 | `mo_yanxi_utility`（26k LOC / 63 模块） | ✅ **全绿** | 6 处 |
 | `mo_yanxi_vulkan_wrapper`（9k LOC / 33 模块） | ✅ **全绿** | 5 处 |
 | `mo_yanxi_react_flow`（3k LOC / 11 模块） | ⛔ **GCC 16 bug 阻塞** | 0 |
-| `xrgui` 根包 | 🔄 源码问题清零，卡在三个第三方库 | 21 处 |
+| `xrgui` 根包 | 🔄 源码问题清零，卡在三个第三方库 | 21 个文件 |
 
 `mcpp.toml` × 4（根包 + 三个薄包）已落地，依赖图完整解析：
 `compat.glfw` / `compat.freetype` / `compat.vulkan(+headers,+runtime)` /
