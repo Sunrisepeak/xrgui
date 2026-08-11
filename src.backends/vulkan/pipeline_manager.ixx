@@ -14,6 +14,19 @@ export import mo_yanxi.gui.renderer.frontend;
 import std;
 import mo_yanxi.utility;
 import mo_yanxi.vk.record_context;
+// GCC 需要这一行才能读回本模块的 BMI，尽管本模块并不使用 batch.frontend。
+//
+// 消费者 renderer.components 同时导入本模块和 g2d.batch.backend.vulkan，
+// 于是 vk::descriptor_layout / vk::dynamic_descriptor_buffer 的特殊成员函数
+// 经两条独立路径可达 —— 具体触发点是本模块里 mr::vector<descriptor_slots>
+// 的实例化。GCC 合并这两份视图时失败：
+//   failed to read compiled module cluster N: Bad file data
+// 让本模块也看见 batch.frontend，两条路径就退化成一条，合并不再发生。
+//
+// 已排除的其他改法（.agents/docs §19 有完整记录）：拆分本模块、把 create /
+// descriptor_slots 的特殊成员外联、改导入顺序、-fno-module-lazy、
+// --param=lazy-modules。改导入顺序无效，其余只是让故障换个模块出现。
+import mo_yanxi.graphic.g2d.batch.frontend;
 import mo_yanxi.graphic.g2d;
 import mo_yanxi.graphic.shader_reflect;
 import mo_yanxi.vk.util.uniform;
