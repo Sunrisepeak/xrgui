@@ -139,3 +139,5 @@ API 语义和实现细节优先写在源码中的 `/** */` Doxygen 注释里。�
 ## 状态
 
 XRGUI 仍处于实验阶段，API 会继续变化。当前目标不是追求“比 Qt 更全”，而是先成为 **高性能渲染应用中的保留式 GUI 选择**：比 immediate-mode 更适合复杂持久 UI，比 HTML/CSS 式运行时样式更贴近 C++ 类型系统，比完整桌面框架更容易嵌入自有 Vulkan 管线。
+
+<!-- CI baseline probe: does the MSVC workflow pass on pristine master? -->
