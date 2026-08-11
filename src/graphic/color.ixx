@@ -814,7 +814,7 @@ constexpr auto proj(Rng&& rng,
 export
 template <>
 struct ::std::hash<mo_yanxi::graphic::color>{
-	size_t operator()(const mo_yanxi::graphic::color& obj) const noexcept{
+	std::size_t operator()(const mo_yanxi::graphic::color& obj) const noexcept{
 		return obj.hash_value();
 	}
 };

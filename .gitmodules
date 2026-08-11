@@ -16,3 +16,15 @@
 [submodule "external/magic_enum"]
 	path = external/magic_enum
 	url = https://github.com/Neargye/magic_enum.git
+[submodule "external/gtl"]
+	path = external/gtl
+	url = https://github.com/greg7mdp/gtl.git
+[submodule "external/nanosvg"]
+	path = external/nanosvg
+	url = https://github.com/memononen/nanosvg.git
+[submodule "external/miniaudio"]
+	path = external/miniaudio
+	url = https://github.com/mackron/miniaudio.git
+[submodule "external/spirv_reflect"]
+	path = external/spirv_reflect
+	url = https://github.com/KhronosGroup/SPIRV-Reflect.git

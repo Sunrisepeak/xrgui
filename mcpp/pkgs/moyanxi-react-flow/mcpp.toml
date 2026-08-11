@@ -1,0 +1,24 @@
+# 过渡期薄包：manifest 住在 xrgui 仓库，源码指回 submodule。
+# 见 .agents/docs/2026-08-12-mcpp-adaptation-design.md §4.3
+
+[package]
+name        = "react_flow"
+version     = "0.1.0"
+standard    = "c++23"
+description = "mo_yanxi reactive data-flow graph modules"
+license     = "BSD-2-Clause"
+
+[build]
+module_extensions = [".ixx"]
+
+# 对齐 xmake 侧 target("mo_yanxi.react_flow")：只收 src/**.ixx
+# （test/ examples/ benchmark/ 的 .cpp 不属于库）
+sources = ["../../../external/mo_yanxi_react_flow/src/**/*.ixx"]
+
+cxxflags = ["-Wno-interference-size"]
+
+[dependencies]
+utility = { path = "../moyanxi-utility" }
+
+[targets.react_flow]
+kind = "lib"

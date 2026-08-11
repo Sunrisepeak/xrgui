@@ -1,0 +1,39 @@
+# 过渡期薄包：manifest 住在 xrgui 仓库，源码指回 submodule。
+# 见 .agents/docs/2026-08-12-mcpp-adaptation-design.md §4.3
+#
+# 上游化后：本文件移进 mo_yanxi_utility 仓库根目录，sources/include_dirs
+# 里的 "../../../external/.../" 前缀整体去掉即可，其余一字不改。
+#
+# 源码位置注意：mo_yanxi_utility 是 mo_yanxi_vulkan_wrapper 的 submodule，
+# 不是 xrgui 的直接 submodule。react_flow 与 vulkan_wrapper 都指向这同一份。
+
+[package]
+name        = "utility"
+version     = "0.1.0"
+standard    = "c++23"
+description = "mo_yanxi utility modules (math / container / concurrency / meta)"
+license     = "BSD-2-Clause"
+
+[build]
+module_extensions = [".ixx"]
+
+# 对齐 xmake 侧默认：add_latest=true, add_legacy=false，
+# 并 remove_files("src/utility/container/open_hash_map.ixx")
+sources = [
+  "../../../external/mo_yanxi_vulkan_wrapper/external/mo_yanxi_utility/src/utility/**/*.ixx",
+  "../../../external/mo_yanxi_vulkan_wrapper/external/mo_yanxi_utility/src/latest/**/*.ixx",
+  "!../../../external/mo_yanxi_vulkan_wrapper/external/mo_yanxi_utility/src/utility/container/open_hash_map.ixx",
+]
+
+include_dirs = [
+  "../../../external/mo_yanxi_vulkan_wrapper/external/mo_yanxi_utility/include",
+]
+
+defines = ["MO_YANXI_UTILITY_ENABLE_CHECK=0"]
+
+# hardware_destructive_interference_size 在 GCC 上是 ABI 警告，这里是包内自用，
+# 钉死成当前 tuning 的 64 字节即可，不必让它刷屏。
+cxxflags = ["-Wno-interference-size"]
+
+[targets.utility]
+kind = "lib"

@@ -10,9 +10,7 @@ module;
 #include <mo_yanxi/adapted_attributes.hpp>
 #include <mo_yanxi/enum_operator_gen.hpp>
 
-#ifndef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
 #include <msdfgen/msdfgen-ext.h>
-#endif
 
 
 export module mo_yanxi.font;
@@ -24,10 +22,6 @@ import mo_yanxi.handle_wrapper;
 import mo_yanxi.concurrent.guard;
 import mo_yanxi.msdf_adaptor;
 import mo_yanxi.log;
-
-#ifdef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
-import <msdfgen/msdfgen-ext.h>;
-#endif
 
 import std;
 
@@ -706,7 +700,11 @@ struct std::hash<mo_yanxi::font::glyph_identity>{ // NOLINT(*-dcl58-cpp)
 	}
 };
 
-module : private;
+// The private module fragment is removed for mcpp: its P1689 scanner reads
+// `module : private;` as a second module declaration and reports
+// "module already declared". Dropping it only makes these definitions
+// reachable to importers (a slightly larger BMI); nothing else changes.
+// TODO: report upstream to mcpp, then restore.
 
 
 void mo_yanxi::font::check(FT_Error error){

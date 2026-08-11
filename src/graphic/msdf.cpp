@@ -212,7 +212,7 @@ clipper2::Paths64 convert_and_fix_outline(FT_Outline& outline){
 
 void convert_paths_to_shape(const clipper2::Paths64& paths, msdfgen::Shape& shape) {
 	for (const auto& path : paths) {
-		const size_t size = path.size();
+		const std::size_t size = path.size();
 		// 忽略无法构成面积的路径
 		if (size < 3) continue;
 
@@ -885,7 +885,7 @@ svg_info create_capsule_smooth(double width, double height, double exponent){
 	}
 	points.push_back(points[0]);
 
-	for(size_t i = 0; i < points.size() - 1; ++i){
+	for(std::size_t i = 0; i < points.size() - 1; ++i){
 		contour.addEdge(new LinearSegment(points[i], points[i + 1]));
 	}
 

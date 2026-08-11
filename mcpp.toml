@@ -1,0 +1,141 @@
+# XRGUI 的 mcpp 构建描述。
+#
+# 与 xmake.lua 并行存在，互不干扰：xmake.lua 仍是 Windows/MSVC 的权威路径，
+# 本文件是 mcpp 的多平台路径。设计与取舍见
+# .agents/docs/2026-08-12-mcpp-adaptation-design.md
+#
+# 当前状态（P1 进行中）：三个 path 依赖里 utility 与 vulkan_wrapper 已全绿，
+# react_flow 被一个 GCC 16 模块 bug 阻塞（见设计文档 §3.2 类别 ④）。因此本文件
+# 描述的是目标形态，尚不能端到端构建 —— 用 `mcpp build` 观察进度。
+
+[package]
+name        = "xrgui"
+version     = "0.1.0"
+standard    = "c++23"
+description = "Retained-mode C++23 GUI library for high-performance desktop rendering"
+license     = "BSD-2-Clause"
+repo        = "https://github.com/Sunrisepeak/xrgui"
+platforms   = ["linux", "windows"]
+
+[build]
+module_extensions = [".ixx"]
+
+sources = [
+  "src/**/*.ixx",                       "src/**/*.cpp",
+  "src.backends/universal/**/*.ixx",    "src.backends/universal/**/*.cpp",
+  "src.backends/vulkan/**/*.ixx",       "src.backends/vulkan/**/*.cpp",
+  "src.backends/vulkan_glfw/**/*.ixx",  "src.backends/vulkan_glfw/**/*.cpp",
+  "src.backends/miniaudio/**/*.ixx",    "src.backends/miniaudio/**/*.cpp",
+  "gui.config/**/*.ixx",                "gui.config/**/*.cpp",
+
+  # 以模块 / C 源形式直接收编的 vendored 单元
+  "external/allocator2d/include/mo_yanxi/allocator2d.ixx",
+  "external/spirv_reflect/spirv_reflect.c",
+
+  # SIMD 探测是 xmake 侧的诊断件，不是构建单元
+  "!src/vectorization_check.cpp",
+]
+
+include_dirs = [
+  "external/include",                       # stb_image / beman::inplace_vector
+  "external/plf_hive",
+  "external/small_vector/source/include",
+  "external/gtl/include",
+  "external/miniaudio",
+  "external/spirv_reflect",
+  "external/nanosvg",                       # 代码写的是 <nanosvg/nanosvg.h>
+  "external/mo_yanxi_vulkan_wrapper/external/VulkanMemoryAllocator/include",
+]
+
+defines = [
+  "MO_YANXI_ALLOCATOR_2D_USE_STD_MODULE",
+  "MO_YANXI_ALLOCATOR_2D_HAS_MATH_VECTOR2",
+  "MO_YANXI_DATA_FLOW_DISABLE_THREAD_CHECK",
+  "VK_USE_64_BIT_PTR_DEFINES=1",
+]
+# ↑ 刻意不定义 XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE：
+#   该宏把 <plf_hive.h> / <gtl/phmap.hpp> / <spirv_reflect.h> 切到
+#   `import <header>;` 头单元路径，GCC 与 Clang 都不该走。xmake.lua 的注释也
+#   已说明新版 MSVC 不再需要它。
+
+# hardware_destructive_interference_size 在 GCC 上是 ABI 警告；这里是包内自用，
+# 当前 tuning 就是 64 字节，不必让它刷屏。
+cxxflags = ["-Wno-interference-size"]
+
+# nanosvg 的头文件在 external/nanosvg/src/，但 include 写法是 <nanosvg/nanosvg.h>；
+# 生成一个薄转发头，避免为一个上游布局去改所有调用点。
+[generated_files]
+"external/nanosvg/nanosvg/nanosvg.h" = """
+#pragma once
+#include "../src/nanosvg.h"
+"""
+"external/nanosvg/nanosvg/nanosvgrast.h" = """
+#pragma once
+#include "../src/nanosvgrast.h"
+"""
+
+[dependencies]
+utility        = { path = "mcpp/pkgs/moyanxi-utility" }
+react_flow     = { path = "mcpp/pkgs/moyanxi-react-flow" }
+vulkan_wrapper = { path = "mcpp/pkgs/moyanxi-vulkan-wrapper" }
+
+[dependencies.compat]
+glfw           = "3.4"
+freetype       = "2.13.3"
+vulkan         = "1.4.357.0"     # 自动带出 compat.vulkan-headers
+vulkan-runtime = "2026.07.29"    # Linux 主机 ICD 符号农场
+
+# magic_enum 走索引包而不是 submodule 里那份：上游的 module/magic_enum.cppm 把
+# `import std;` 包在 #ifdef MAGIC_ENUM_USE_STD_MODULE 里，而 mcpp 的扫描器禁止
+# 条件 import。索引包用 scan_overrides 正好绕过这一点，省掉给上游打补丁。
+[dependencies.neargye]
+magic_enum = "0.9.8"
+
+[dependencies.marzer]
+tomlplusplus = "3.4.0"
+
+# ── 目标 ───────────────────────────────────────────────
+[targets.xrgui_hello]
+kind = "bin"
+main = "src.hello/main.cpp"
+
+[targets.xrgui_example]
+kind              = "bin"
+main              = "src.examples/main.cpp"
+required_features = ["examples"]
+
+# mcpp test 的发现路径硬编码为 tests/**/*.cpp，而 xrgui 的测试在 src.tests/。
+# 与其重命名（会碰 xmake.lua），不如把它做成一个 feature 门控的普通 bin：
+#   mcpp build --features tests && ./target/<triple>/<fp>/bin/xrgui_tests
+# 见设计文档 §5.3。
+[targets.xrgui_tests]
+kind              = "bin"
+main              = "src.tests/main.cpp"
+required_features = ["tests"]
+
+[features]
+default = []
+# 伴生源只在对应 feature 激活时进入构建，避免被链进 hello
+examples = { sources = ["src.examples/**/*.ixx", "src.examples/**/*.cpp",
+                        "!src.examples/main.cpp"] }
+tests    = { sources = ["src.tests/**/*.cpp", "!src.tests/main.cpp"] }
+
+# feature 未激活时这些依赖完全不解析、不下载
+[feature-deps.tests]
+compat.gtest = "1.17.0"
+
+# ── 平台条件 ───────────────────────────────────────────
+[target.linux.build]
+ldflags = ["-lfontconfig"]
+
+[target.windows.build]
+ldflags = ["-ladvapi32", "-limm32", "-lole32", "-lshell32", "-luser32"]
+
+[toolchain]
+default = "gcc@16.1.0"
+windows = "llvm@20.1.7"
+macos   = "llvm@22.1.8"
+
+[profile.release]
+opt   = 2
+debug = true          # 对齐 xmake 的 set_symbols("debug", "embed")

@@ -9,3 +9,5 @@
 /properties/assets_raw/gen/
 /properties/assets_raw/shader/spv/
 /compile_commands.json
+target/
+.mcpp/

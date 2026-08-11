@@ -1,0 +1,117 @@
+diff --git a/src/utility/generic/function_manipulate.ixx b/src/utility/generic/function_manipulate.ixx
+index a1d7a71..0f05efe 100644
+--- a/src/utility/generic/function_manipulate.ixx
++++ b/src/utility/generic/function_manipulate.ixx
+@@ -58,8 +58,10 @@ concept passable = requires(Arg&& arg){
+ 	passable_probe<Param>{std::forward<Arg>(arg)};
+ };
+ 
++// GCC/[basic.link]p14: `static` gives internal linkage, making this TU-local; a
++// module-linkage template may not expose it. Module linkage already scopes it.
+ template <typename>
+-static consteval void pin(){
++consteval void pin(){
+ 
+ }
+ 
+diff --git a/src/utility/generic/tuple_manipulate.ixx b/src/utility/generic/tuple_manipulate.ixx
+index eccd6c8..2a15d91 100644
+--- a/src/utility/generic/tuple_manipulate.ixx
++++ b/src/utility/generic/tuple_manipulate.ixx
+@@ -116,9 +116,10 @@ constexpr inline std::size_t tuple_match_first_v = []() constexpr -> std::size_t
+ 	return index;
+ }();
+ 
+-export
++// GCC/[basic.link]p14: an unnamed lambda closure is a TU-local entity and may not
++// be exposed by a declaration with module linkage. Name the helper instead.
+ template <typename Tuple>
+-using reverse_tuple_t = typename decltype([]{
++consteval auto reverse_tuple_impl(){
+ 	if constexpr(std::tuple_size_v<Tuple> == 0){
+ 		return std::type_identity<std::tuple<>>{};
+ 	} else{
+@@ -126,7 +127,11 @@ using reverse_tuple_t = typename decltype([]{
+ 			return std::type_identity<std::tuple<std::tuple_element_t<std::tuple_size_v<Tuple> - 1 - Idx, Tuple>...>>{};
+ 		}(std::make_index_sequence<std::tuple_size_v<Tuple>>{});
+ 	}
+-}())::type;
++}
++
++export
++template <typename Tuple>
++using reverse_tuple_t = typename decltype(reverse_tuple_impl<Tuple>())::type;
+ 
+ export
+ template <template <typename > typename UnaryPred, typename Tuple>
+@@ -160,9 +165,8 @@ using tuple_const_to_inner_t = typename decltype(apply_ext_const_to_inner<T>()):
+ 
+ constexpr std::size_t a = tuple_find_first_v<std::is_floating_point, std::tuple<int, float>>;
+ 
+-export
+ template <template <typename, typename> typename W, typename LHS, typename RHS>
+-using binary_apply_to_tuple_t = typename decltype([]{
++consteval auto binary_apply_to_tuple_impl(){
+ 	if constexpr(is_tuple_v<LHS> && is_tuple_v<RHS>){
+ 		return [] <std::size_t ... Idx>(std::index_sequence<Idx...>){
+ 			return std::type_identity<std::tuple<W<std::tuple_element_t<Idx, LHS>, std::tuple_element_t<Idx, RHS>>...>>
+@@ -181,7 +185,11 @@ using binary_apply_to_tuple_t = typename decltype([]{
+ 	} else{
+ 		static_assert(false, "At least one side should be tuple");
+ 	}
+-}())::type;
++}
++
++export
++template <template <typename, typename> typename W, typename LHS, typename RHS>
++using binary_apply_to_tuple_t = typename decltype(binary_apply_to_tuple_impl<W, LHS, RHS>())::type;
+ 
+ template <std::size_t count, typename Tuple>
+ consteval auto remove_tuple_first_elem(){
+@@ -272,7 +280,7 @@ static_assert(tuple_index_v<int, std::tuple<float, double>> == 2);
+ 
+ 
+ template <std::size_t Stride, typename Tup, typename Proj, std::size_t Offset = 0>
+-using tuple_stride_t = decltype([]{
++consteval auto tuple_stride_impl(){
+ 	static_assert(Stride > 0);
+ 	static constexpr auto total = std::tuple_size_v<Tup>;
+ 	static constexpr auto count_raw = total / Stride;
+@@ -280,7 +288,10 @@ using tuple_stride_t = decltype([]{
+ 	return []<std::size_t ...Idx>(std::index_sequence<Idx...>){
+ 		return std::type_identity<std::tuple<std::invoke_result_t<Proj, std::tuple_element_t<Idx * Stride + Offset, Tup>>...>>{};
+ 	}(std::make_index_sequence<count>{});
+-}())::type;
++}
++
++template <std::size_t Stride, typename Tup, typename Proj, std::size_t Offset = 0>
++using tuple_stride_t = typename decltype(tuple_stride_impl<Stride, Tup, Proj, Offset>())::type;
+ 
+ 
+ template <std::size_t Idx, typename ArgsTuple>
+diff --git a/src/utility/math/basic/vector2.ixx b/src/utility/math/basic/vector2.ixx
+index 277a118..0277709 100644
+--- a/src/utility/math/basic/vector2.ixx
++++ b/src/utility/math/basic/vector2.ixx
+@@ -1364,7 +1364,9 @@ struct std::hash<mo_yanxi::math::vector2<T>>{
+ 	}
+ };
+ 
+-export
++// Not exported: a specialization of std::hash is attached to the GLOBAL module,
++// and `export` on such a declaration is ill-formed (GCC: "explicit specializations
++// are not permitted here"). It stays reachable to importers regardless.
+ template <>
+ struct std::hash<mo_yanxi::math::vector2<int>>{
+ 	static std::size_t operator()(mo_yanxi::math::vector2<int>::const_pass_t v) noexcept{
+@@ -1372,7 +1374,9 @@ struct std::hash<mo_yanxi::math::vector2<int>>{
+ 	}
+ };
+ 
+-export
++// Not exported: a specialization of std::hash is attached to the GLOBAL module,
++// and `export` on such a declaration is ill-formed (GCC: "explicit specializations
++// are not permitted here"). It stays reachable to importers regardless.
+ template <>
+ struct std::hash<mo_yanxi::math::vector2<unsigned>>{
+ 	static std::size_t operator()(mo_yanxi::math::vector2<unsigned>::const_pass_t v) noexcept{

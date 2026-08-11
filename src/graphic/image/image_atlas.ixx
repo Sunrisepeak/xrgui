@@ -4,10 +4,8 @@ module;
 #include <cassert>
 #include <vk_mem_alloc.h>
 
-#ifndef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
 #include "plf_hive.h"
 #include <gtl/phmap.hpp>
-#endif
 
 
 export module mo_yanxi.graphic.image_atlas;
@@ -44,11 +42,6 @@ import mo_yanxi.cache;
 
 import std;
 
-
-#ifdef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
-import <plf_hive.h>;
-import <gtl/phmap.hpp>;
-#endif
 
 
 namespace mo_yanxi::graphic{

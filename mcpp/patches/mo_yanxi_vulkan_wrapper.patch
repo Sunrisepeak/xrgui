@@ -1,0 +1,139 @@
+diff --git a/external/mo_yanxi_utility b/external/mo_yanxi_utility
+--- a/external/mo_yanxi_utility
++++ b/external/mo_yanxi_utility
+@@ -1 +1 @@
+-Subproject commit fbdb52871425e953e476c67509640bc36b05cb2b
++Subproject commit fbdb52871425e953e476c67509640bc36b05cb2b-dirty
+diff --git a/src/vk_wrap/objects/physical_device.ixx b/src/vk_wrap/objects/physical_device.ixx
+index fc4848a..4feb3c3 100644
+--- a/src/vk_wrap/objects/physical_device.ixx
++++ b/src/vk_wrap/objects/physical_device.ixx
+@@ -220,7 +220,9 @@ namespace mo_yanxi::vk{
+ 	};
+ }
+ 
+-export
++// Not exported: a specialization of a std template is attached to the GLOBAL
++// module, and `export` on such a declaration is ill-formed (GCC: "explicit
++// specializations are not permitted here"). It stays reachable to importers.
+ template <>
+ struct std::hash<mo_yanxi::vk::queue_family_indices::family_data>{
+ 	constexpr std::size_t operator()(const mo_yanxi::vk::queue_family_indices::family_data& index) const noexcept{
+diff --git a/src/vk_wrap/objects/resources/image_derives.ixx b/src/vk_wrap/objects/resources/image_derives.ixx
+index a297bbe..ccfbe15 100644
+--- a/src/vk_wrap/objects/resources/image_derives.ixx
++++ b/src/vk_wrap/objects/resources/image_derives.ixx
+@@ -32,7 +32,7 @@ template <typename ImageProv>
+ struct combined_image_type{
+ protected:
+ 	ImageProv image{};
+-	image_view image_view{};
++	vk::image_view image_view{};
+ 
+ public:
+ 	[[nodiscard]] combined_image_type() = default;
+@@ -88,7 +88,7 @@ export constexpr std::uint32_t get_recommended_mip_level(const VkExtent2D extent
+ 
+ export
+ struct texture_bitmap_write{
+-	const bitmap& bitmap;
++	const mo_yanxi::bitmap& bitmap;
+ 	math::point2 offset;
+ };
+ 
+diff --git a/src/vk_wrap/stack_trace.cpp b/src/vk_wrap/stack_trace.cpp
+index 795c514..8e1967a 100644
+--- a/src/vk_wrap/stack_trace.cpp
++++ b/src/vk_wrap/stack_trace.cpp
+@@ -4,10 +4,14 @@ module;
+ 
+ module mo_yanxi.stack_trace;
+ 
+-#if defined(__cpp_lib_stacktrace)
+-
++// Unconditional: an `import` inside a conditional preprocessor block cannot be
++// resolved by a P1689 dependency scanner (mcpp rejects it outright), and imports
++// belong at the top of the module purview regardless. Importing it when
++// __cpp_lib_stacktrace is absent costs nothing.
+ import mo_yanxi.meta_programming;
+ 
++#if defined(__cpp_lib_stacktrace)
++
+ void mo_yanxi::print_stack_trace(std::ostream& ss, unsigned skip, const std::stacktrace& currentStacktrace){
+ 	std::println(ss, "Stack Trace: ");
+ 
+diff --git a/src/vk_wrap/util/exception.ixx b/src/vk_wrap/util/exception.ixx
+index 99ad0b5..5115ae4 100644
+--- a/src/vk_wrap/util/exception.ixx
++++ b/src/vk_wrap/util/exception.ixx
+@@ -6,44 +6,56 @@ export module mo_yanxi.vk.util:exception;
+ 
+ import std;
+ 
++// These derive from std::runtime_error rather than std::exception.
++//
++// `std::exception(const char*)` is an MSVC extension -- the standard
++// std::exception has only a default constructor, so libstdc++/libc++ reject it.
++// std::runtime_error is the portable base that actually carries a message, and
++// its what() is `noexcept`, which also fixes the "looser exception
++// specification on overriding virtual function" error the old `const char*
++// what() const` overrides produced.
++//
++// Constructing from std::string{msg} rather than msg.data() is not incidental:
++// a string_view is not guaranteed NUL-terminated, so the old code read past the
++// end for any view that was not.
+ namespace mo_yanxi::vk{
+-	export struct vk_error final : std::exception{
++	export struct vk_error final : std::runtime_error{
+ 		[[nodiscard]] vk_error(const VkResult result, const std::string_view msg)
+-			: std::exception(msg.data()), result{result}{
++			: std::runtime_error(std::string{msg}), result{result}{
+ 		}
+ 
+ 		VkResult result{};
+ 
+-		[[nodiscard]] const char* what() const override{
+-			return std::exception::what();
++		[[nodiscard]] const char* what() const noexcept override{
++			return std::runtime_error::what();
+ 		}
+ 	};
+ 
+-	export struct unqualified_error final : std::exception{
+-		[[nodiscard]] unqualified_error() : std::exception("Env/Device Disabled"){
++	export struct unqualified_error final : std::runtime_error{
++		[[nodiscard]] unqualified_error() : std::runtime_error("Env/Device Disabled"){
+ 
+ 		}
+ 
+ 		[[nodiscard]] unqualified_error(const std::string_view msg)
+-			: std::exception(msg.data()){
++			: std::runtime_error(std::string{msg}){
+ 		}
+ 
+-		[[nodiscard]] const char* what() const override{
+-			return std::exception::what();
++		[[nodiscard]] const char* what() const noexcept override{
++			return std::runtime_error::what();
+ 		}
+ 	};
+ 
+-	struct ambiguous_error final : std::exception{
+-		[[nodiscard]] ambiguous_error() : std::exception("Ambiguous Setting"){
++	struct ambiguous_error final : std::runtime_error{
++		[[nodiscard]] ambiguous_error() : std::runtime_error("Ambiguous Setting"){
+ 
+ 		}
+ 
+ 		[[nodiscard]] ambiguous_error(const std::string_view msg)
+-			: std::exception(msg.data()){
++			: std::runtime_error(std::string{msg}){
+ 		}
+ 
+-		[[nodiscard]] const char* what() const override{
+-			return std::exception::what();
++		[[nodiscard]] const char* what() const noexcept override{
++			return std::runtime_error::what();
+ 		}
+ 	};
+ }
