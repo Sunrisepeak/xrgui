@@ -1,3 +1,44 @@
+diff --git a/mcpp.toml b/mcpp.toml
+new file mode 100644
+index 0000000..45e6810
+--- /dev/null
++++ b/mcpp.toml
+@@ -0,0 +1,35 @@
++# mcpp manifest for this library, living beside its own sources.
++# Delivered through xrgui's mcpp/patches/ until it is upstreamed; once it is,
++# nothing here has to change.
++
++[package]
++name        = "vulkan_wrapper"
++version     = "0.1.0"
++standard    = "c++23"
++description = "mo_yanxi Vulkan wrapper modules"
++license     = "BSD-2-Clause"
++
++[build]
++module_extensions = [".ixx"]
++
++sources = [
++  "src/vk_wrap/**/*.ixx",
++  "src/vk_wrap/**/*.cpp",
++]
++
++include_dirs = [
++  "external/VulkanMemoryAllocator/include",
++]
++
++defines = ["VK_USE_64_BIT_PTR_DEFINES=1", "MO_YANXI_VULKAN_WRAPPER_ENABLE_CHECK=0"]
++
++cxxflags = ["-Wno-interference-size", "-Wno-changes-meaning"]
++
++[dependencies]
++utility = { path = "external/mo_yanxi_utility" }
++
++[dependencies.compat]
++vulkan = "1.4.357.0"
++
++[targets.vulkan_wrapper]
++kind = "lib"
 diff --git a/src/vk_wrap/objects/physical_device.ixx b/src/vk_wrap/objects/physical_device.ixx
 index fc4848a..4feb3c3 100644
 --- a/src/vk_wrap/objects/physical_device.ixx

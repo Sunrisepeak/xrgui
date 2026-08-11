@@ -1251,3 +1251,29 @@ mcpp build (react_flow, 冷构建 --cache off)
 
 如果将来 GCC 修好了，这次合并可以原样回滚 —— 补丁在
 `mcpp/patches/mo_yanxi_react_flow.patch` 里，是自包含的。
+
+
+---
+
+## 18. manifest 挪回各自的模块目录
+
+§4.3 把三个 submodule 的 manifest 集中放在 `mcpp/pkgs/`，用 `../../../external/...`
+越界 glob 指回源码。理由是「不碰上游仓库」。
+
+**那个理由已经不成立了。** 到 §17 为止，`mcpp/patches/` 里已经有四份补丁，
+其中 react_flow 那份甚至删掉了整个 `manager.ixx`。既然已经在改上游源码，
+manifest 放进去没有任何额外代价。
+
+现在每个库的 `mcpp.toml` 就在它自己的源码旁：
+
+```
+external/mo_yanxi_react_flow/mcpp.toml                              sources = ["src/**/*.ixx"]
+external/mo_yanxi_vulkan_wrapper/mcpp.toml                          sources = ["src/vk_wrap/**"]
+external/mo_yanxi_vulkan_wrapper/external/mo_yanxi_utility/mcpp.toml
+```
+
+三处收益：越界 glob 没了；`mcpp/pkgs/` 这个容易被读成「包索引」的目录没了
+（它从来不是索引——本地索引在 §7 规划过但最终没建，三个重库直接以 `compat.*`
+进了 mcpp-index）；**上游化时零改动**，manifest 本来就在正确位置。
+
+manifest 随补丁分发，所以 `apply.sh` 仍是新检出的必要一步——它本来就是。

@@ -1,3 +1,43 @@
+diff --git a/mcpp.toml b/mcpp.toml
+new file mode 100644
+index 0000000..0c5f3a6
+--- /dev/null
++++ b/mcpp.toml
+@@ -0,0 +1,34 @@
++# mcpp manifest for this library, living beside its own sources.
++# Delivered through xrgui's mcpp/patches/ until it is upstreamed; once it is,
++# nothing here has to change.
++
++[package]
++name        = "utility"
++version     = "0.1.0"
++standard    = "c++23"
++description = "mo_yanxi utility modules (math / container / concurrency / meta)"
++license     = "BSD-2-Clause"
++
++[build]
++module_extensions = [".ixx"]
++
++# 对齐 xmake 侧默认：add_latest=true, add_legacy=false，
++# 并 remove_files("src/utility/container/open_hash_map.ixx")
++sources = [
++  "src/utility/**/*.ixx",
++  "src/latest/**/*.ixx",
++  "!src/utility/container/open_hash_map.ixx",
++]
++
++include_dirs = [
++  "include",
++]
++
++defines = ["MO_YANXI_UTILITY_ENABLE_CHECK=0"]
++
++# hardware_destructive_interference_size 在 GCC 上是 ABI 警告，这里是包内自用，
++# 钉死成当前 tuning 的 64 字节即可，不必让它刷屏。
++cxxflags = ["-Wno-interference-size", "-Wno-changes-meaning"]
++
++[targets.utility]
++kind = "lib"
 diff --git a/src/utility/container/array_queue.ixx b/src/utility/container/array_queue.ixx
 index 573039a..e5a24c6 100644
 --- a/src/utility/container/array_queue.ixx

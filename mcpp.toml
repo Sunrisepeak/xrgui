@@ -93,12 +93,11 @@ cxxflags = ["-Wno-interference-size", "-Wno-changes-meaning"]
 # 表内按**来源**分两组，因为那才是真正的角色差异：内部包随本仓一起演进、改了
 # 立刻生效；外部包是钉版本的第三方，升级是一次独立决策。
 
-# ── 内部依赖：本仓过渡期薄包（见 .agents/docs 的 §4.3）───────────
-#    上游化后这三条改成指向 submodule 自身，其余不变。
+# ── 内部依赖：三个 submodule，manifest 就放在各自源码旁 ──────────
 [dependencies]
-utility        = { path = "mcpp/pkgs/moyanxi-utility" }
-react_flow     = { path = "mcpp/pkgs/moyanxi-react-flow" }
-vulkan_wrapper = { path = "mcpp/pkgs/moyanxi-vulkan-wrapper" }
+utility        = { path = "external/mo_yanxi_vulkan_wrapper/external/mo_yanxi_utility" }
+react_flow     = { path = "external/mo_yanxi_react_flow" }
+vulkan_wrapper = { path = "external/mo_yanxi_vulkan_wrapper" }
 
 # ── 外部依赖：mcpp-index 包 ──────────────────────────────────────
 compat.glfw           = "3.4"
