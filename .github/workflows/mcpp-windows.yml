@@ -1,9 +1,12 @@
-# Windows / MSVC CI for the mcpp build, run side by side with the xmake one.
+# Windows / MSVC CI for the mcpp build.
 #
-# The environment setup is copied from build_and_dispatch.yml on purpose. That
-# workflow is green, so if the mcpp job fails while the xmake job in the same
-# run succeeds, the difference is in mcpp.toml and nowhere else -- which is the
-# only thing this file is here to tell us.
+# Only mcpp. build_and_dispatch.yml already builds this PR with xmake on the same
+# runner image and the same MSVC, so repeating it here would cost another VS 2026
+# install per run to learn nothing new. The toolchain setup below is copied from
+# that workflow so the two legs stay comparable.
+#
+# xmake is not installed at all: its two asset tasks are thin wrappers around
+# Python scripts, and this job calls those scripts directly.
 name: mcpp (Windows / MSVC)
 
 env:
@@ -67,11 +70,6 @@ jobs:
           Expand-Archive slang.zip -DestinationPath C:\slang
           echo "C:\slang\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
-      - name: Setup xmake
-        uses: xmake-io/github-action-setup-xmake@v1
-        with:
-          xmake-version: latest
-
       - name: Install Vulkan SDK
         run: |
           Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/${{ env.VULKAN_VER }}/windows/vulkansdk-windows-X64-${{ env.VULKAN_VER }}.exe" -OutFile VulkanSDK.exe
@@ -79,10 +77,20 @@ jobs:
           echo "VULKAN_SDK=C:\VulkanSDK" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           echo "C:\VulkanSDK\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
+      # xmake.lua's xrgui.gen_slang / xrgui.gen_icon tasks, called directly.
+      # gui.config/default/gui.assets.cpp does `#include <assets_summary.h>`, and
+      # the icons that header indexes are generated rather than committed.
       - name: Generate assets (shaders and icons)
+        shell: pwsh
         run: |
-          xmake xrgui.gen_slang -p "--oneshot --show-cmds"
-          xmake xrgui.gen_icon
+          py properties/build_util/slang_builder.py `
+             (Get-Command slangc).Source `
+             properties/assets/shader/spv `
+             properties/assets_raw/shader/config.toml `
+             -j 30 --oneshot --show-cmds
+          py properties/assets_raw/svg_normalize.py `
+             -i properties/assets_raw/icons `
+             -o properties/assets_raw/gen/icons
 
       # ── MSVC 14.52 preview, as the xmake workflow installs it ──────────
       - name: Install VS 2026 Insider Build Tools (MSVC ${{ env.MSVC_VER }} preview)
@@ -119,14 +127,6 @@ jobs:
               }
           }
 
-      # ── Reference leg: the upstream xmake build, unchanged ─────────────
-      - name: xmake — configure
-        run: xmake f -m release --toolchain=msvc --vs=2026 --vs_toolset=${{ env.MSVC_VER }} -cyv
-
-      - name: xmake — build xrgui.example
-        run: xmake -v xrgui.example
-
-      # ── The leg this PR is about ───────────────────────────────────────
       - name: Install mcpp
         shell: pwsh
         run: |

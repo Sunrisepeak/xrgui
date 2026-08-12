@@ -7,10 +7,13 @@
 上游 `xmake.lua` 是 MSVC-first 的，且它的 CI 是绿的。所以 `mcpp.toml`
 **是对 `xmake.lua` 的转写，不是第二套意见**——两者若有差异，那是转写的 bug。
 
-CI 也按这个前提设计：`.github/workflows/mcpp-windows.yml` 在**同一个 job 里**
-先跑 xmake、再跑 mcpp，环境完全一致（VS 2026 Insider + MSVC 14.52 preview、
-Vulkan SDK、slang、同样的资产生成任务）。这样 mcpp 挂而 xmake 过时，问题只可能
-在 `mcpp.toml` 里。
+`.github/workflows/mcpp-windows.yml` **只跑 mcpp**。上游的
+`build_and_dispatch.yml` 已经在同一个 PR、同一个 runner 镜像、同一版 MSVC 上跑
+xmake 了，在这里再跑一遍等于每轮多装一次 VS 2026 却得不到新信息。工具链配置照抄
+那个 workflow（VS 2026 Insider + MSVC 14.52 preview、Vulkan SDK、slang），
+所以两条腿仍然可比。
+
+xmake 本身也不装：它那两个资产任务不过是 Python 脚本的薄包装，本 job 直接调脚本。
 
 ## 对应关系
 
