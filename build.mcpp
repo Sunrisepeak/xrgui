@@ -219,56 +219,70 @@ int main() {
     // the target dir so the built image can find its data. build.mcpp cannot do
     // that itself: it runs during prepare, and the binary directory is not in
     // the environment contract -- ${mcpp.bin_dir} exists only as an action
-    // interpolation. So declare it as a `artifact` action, whose inputs are
-    // link outputs and which therefore runs after the link.
+    // interpolation. So it is declared as an action instead.
     //
-    // The copy is one command for the whole tree, but every output has to be
-    // named: mcpp fixes the file set during prepare. That is fine here because
-    // the set is small and, importantly, the generated shaders above are
-    // already on disk by this point.
-    const auto assets_src = root / "properties/assets";
-    if (std::filesystem::is_directory(assets_src)) {
-        std::vector<std::filesystem::path> files;
-        for (const auto& e : std::filesystem::recursive_directory_iterator{assets_src}) {
-            if (e.is_regular_file()) files.push_back(e.path());
-        }
-        std::ranges::sort(files);
+    // `artifact` is the role whose outputs are new files rather than compile or
+    // link inputs, which is what these are. Note it does NOT by itself order
+    // the edge after the link: that only happens when the action's own inputs
+    // are link outputs. These inputs are source files, so ninja may run the
+    // copy whenever it likes -- which is fine, because runtime data does not
+    // depend on the binaries. Naming a link output to force the ordering would
+    // mean naming one specific target, and which targets exist depends on the
+    // active features.
+    //
+    // One action, not two: a single copy command takes both sources, and every
+    // output still has to be named because mcpp fixes the file set during
+    // prepare. That is workable because the set is small and the generated
+    // shaders above are already on disk by this point.
+    const auto assets_src  = root / "properties/assets";
+    const auto vk_settings = root / "properties/vk_layer_settings.txt";
 
-        mcpp::action a;
-        a.id   = "copy-assets";
-        a.role = "artifact";
-        if (mcpp::target_os() == std::string_view{"windows"}) {
-            a.arg("cmd").arg("/c").arg("xcopy").arg("/E").arg("/I").arg("/Y").arg("/Q")
-             .arg(assets_src.string().c_str())
-             .arg("${mcpp.bin_dir}\\assets\\");
-        } else {
-            a.arg("cp").arg("-r")
-             .arg(assets_src.string().c_str())
-             .arg("${mcpp.bin_dir}/");
+    std::vector<std::filesystem::path> asset_files;
+    if (std::filesystem::is_directory(assets_src)) {
+        for (const auto& e : std::filesystem::recursive_directory_iterator{assets_src}) {
+            if (e.is_regular_file()) asset_files.push_back(e.path());
         }
-        for (const auto& f : files) {
+        std::ranges::sort(asset_files);
+    }
+    const bool have_vk = std::filesystem::exists(vk_settings);
+
+    if (!asset_files.empty() || have_vk) {
+        mcpp::action a;
+        a.id   = "stage-runtime-data";
+        a.role = "artifact";
+
+        // argv, not a shell string. cp takes several sources and one
+        // destination; Copy-Item is the Windows equivalent that handles a
+        // directory and a plain file in the same call, which `copy` and
+        // `xcopy` cannot.
+        if (mcpp::target_os() == std::string_view{"windows"}) {
+            std::string paths;
+            if (!asset_files.empty()) paths += std::format("'{}'", assets_src.string());
+            if (have_vk) {
+                if (!paths.empty()) paths += ",";
+                paths += std::format("'{}'", vk_settings.string());
+            }
+            a.arg("powershell").arg("-NoProfile").arg("-Command")
+             .arg(std::format("Copy-Item -Force -Recurse -Path {} -Destination '${{mcpp.bin_dir}}'", paths).c_str());
+        } else {
+            a.arg("cp").arg("-r");
+            if (!asset_files.empty()) a.arg(assets_src.string().c_str());
+            if (have_vk) a.arg(vk_settings.string().c_str());
+            a.arg("${mcpp.bin_dir}/");
+        }
+
+        for (const auto& f : asset_files) {
             a.input(f.string().c_str());
             const auto rel = std::filesystem::relative(f, assets_src).generic_string();
             a.output(std::format("${{mcpp.bin_dir}}/assets/{}", rel).c_str());
         }
-        a.submit();
-        std::println("build.mcpp: {} runtime asset(s) will be staged next to the binaries", files.size());
-    }
-
-    const auto vk_settings = root / "properties/vk_layer_settings.txt";
-    if (std::filesystem::exists(vk_settings)) {
-        mcpp::action a;
-        a.id   = "copy-vk-layer-settings";
-        a.role = "artifact";
-        if (mcpp::target_os() == std::string_view{"windows"}) {
-            a.arg("cmd").arg("/c").arg("copy").arg("/Y")
-             .arg(vk_settings.string().c_str()).arg("${mcpp.bin_dir}\\");
-        } else {
-            a.arg("cp").arg(vk_settings.string().c_str()).arg("${mcpp.bin_dir}/");
+        if (have_vk) {
+            a.input(vk_settings.string().c_str())
+             .output("${mcpp.bin_dir}/vk_layer_settings.txt");
         }
-        a.input(vk_settings.string().c_str())
-         .output("${mcpp.bin_dir}/vk_layer_settings.txt")
-         .submit();
+        a.submit();
+        std::println("build.mcpp: staging {} runtime file(s) beside the binaries",
+                     asset_files.size() + (have_vk ? 1u : 0u));
     }
 
     // Private to this package -- consumers of xrgui have no business seeing

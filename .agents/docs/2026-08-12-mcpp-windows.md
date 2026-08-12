@@ -21,9 +21,21 @@ xmake 在 `after_build` 里把 `properties/assets` 和 `vk_layer_settings.txt` �
 目标目录。`build.mcpp` 自己做不了：它在 prepare 阶段运行，而二进制目录不在环境
 契约里——`${mcpp.bin_dir}` 只作为 **action 的插值**存在。
 
-所以走 `role = "artifact"`：它的输入是链接产物，因此排在链接之后。整棵树一条拷贝
-命令，但每个输出都必须点名（mcpp 在 prepare 时就把文件集定死了）。这里可行是因为
-文件很少，而且上面的着色器生成已经先跑完、产物已在磁盘上。
+所以声明成 action。`artifact` 是「输出是新文件、而非编译或链接输入」的那个 role，
+正合这里。
+
+有一点要说清楚，免得被角色名误导：**`artifact` 本身并不把这条边排到链接之后**。
+文档说它「在链接之后运行」，前提是该 action 的**输入本身是链接产物**。这里的输入
+是源文件，所以 ninja 想什么时候拷都行——这没问题，运行期数据本来就不依赖二进制。
+要强行排在链接后就得点名某个具体 target，而哪些 target 存在取决于激活了哪些
+feature，那样更脆。（这条是查 `build.ninja` 里实际的依赖边确认的，不是照搬文档。）
+
+**一条 action 就够，不必两条**：一条拷贝命令可以带多个源。POSIX 上是
+`cp -r <assets> <vk_settings> <bin>/`；Windows 上用 `Copy-Item`，因为它能在同一次
+调用里同时处理目录和普通文件，而 `copy` / `xcopy` 各自只能管一半。
+
+每个输出仍必须点名（mcpp 在 prepare 时就把文件集定死了）。这里可行是因为文件很少，
+而且上面的着色器生成已经先跑完、产物已在磁盘上。
 
 xmake 那段里另外两项：`add_syslinks` 已落在 `[target.windows.build] ldflags`；
 `set_policy("build.optimization.lto")` 对应 `[profile.release] lto = true`，
