@@ -1,0 +1,179 @@
+# Windows / MSVC CI for the mcpp build, run side by side with the xmake one.
+#
+# The environment setup is copied from build_and_dispatch.yml on purpose. That
+# workflow is green, so if the mcpp job fails while the xmake job in the same
+# run succeeds, the difference is in mcpp.toml and nowhere else -- which is the
+# only thing this file is here to tell us.
+name: mcpp (Windows / MSVC)
+
+env:
+  PYTHONUTF8: 1
+  VULKAN_VER: 1.4.341.1
+  MSVC_VER: 14.52
+
+on:
+  push:
+    branches: [ "master", "feat/mcpp-windows" ]
+  pull_request:
+    branches: [ "master" ]
+  workflow_dispatch:
+
+jobs:
+  windows-msvc:
+    runs-on: windows-latest
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # ── Asset generation: identical to the xmake workflow ──────────────
+      # gui.config/default/gui.assets.cpp does `#include <assets_summary.h>`,
+      # and the icons that header indexes are generated, not committed. Both
+      # build systems consume the same generated tree.
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install tomli
+
+      - name: Setup Slang compiler
+        run: |
+          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/shader-slang/slang/releases/latest"
+          $tag = $release.tag_name
+          $version = $tag -replace '^v', ''
+          $downloadUrl = "https://github.com/shader-slang/slang/releases/download/$tag/slang-$version-windows-x86_64.zip"
+          Write-Host "Downloading Slang from: $downloadUrl"
+          Invoke-WebRequest -Uri $downloadUrl -OutFile slang.zip
+          Expand-Archive slang.zip -DestinationPath C:\slang
+          echo "C:\slang\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Setup xmake
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: latest
+
+      - name: Install Vulkan SDK
+        run: |
+          Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/${{ env.VULKAN_VER }}/windows/vulkansdk-windows-X64-${{ env.VULKAN_VER }}.exe" -OutFile VulkanSDK.exe
+          Start-Process -FilePath .\VulkanSDK.exe -ArgumentList "--root C:\VulkanSDK --accept-licenses --default-answer --confirm-command install" -Wait -NoNewWindow
+          echo "VULKAN_SDK=C:\VulkanSDK" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "C:\VulkanSDK\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Generate assets (shaders and icons)
+        run: |
+          xmake xrgui.gen_slang -p "--oneshot --show-cmds"
+          xmake xrgui.gen_icon
+
+      # ── MSVC 14.52 preview, as the xmake workflow installs it ──────────
+      - name: Install VS 2026 Insider Build Tools (MSVC ${{ env.MSVC_VER }} preview)
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://aka.ms/vs/18/insiders/vs_BuildTools.exe" -OutFile "vs_buildtools_insider.exe"
+          $installArgs = @(
+            "--quiet", "--wait", "--norestart", "--nocache",
+            "--installPath", "C:\VS2026Insider",
+            "--add", "Microsoft.VisualStudio.Workload.VCTools",
+            "--add", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+            "--add", "Microsoft.VisualStudio.Component.VC.Preview.Tools.x86.x64",
+            "--includeRecommended"
+          )
+          $process = Start-Process -FilePath ".\vs_buildtools_insider.exe" -ArgumentList $installArgs -Wait -PassThru -NoNewWindow
+          if ($process.ExitCode -ne 0 -and $process.ExitCode -ne 3010) {
+              Write-Error "Installation failed with exit code: $($process.ExitCode)"
+              exit 1
+          }
+
+      - name: Export MSVC ${{ env.MSVC_VER }} environment
+        shell: pwsh
+        run: |
+          $installPath = & vswhere.exe -latest -prerelease -products * `
+            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+            -property installationPath
+          if (-not $installPath) { Write-Error "VS 2026 Insider not found!"; exit 1 }
+          $vcvarsall = Join-Path $installPath "VC\Auxiliary\Build\vcvarsall.bat"
+          $envLines = cmd /c "call `"$vcvarsall`" x64 -vcvars_ver=${{ env.MSVC_VER }} >nul && set"
+          foreach ($line in $envLines) {
+              if ($line -match "^(.*?)=(.*)$") {
+                  $key = $matches[1]; $value = $matches[2]
+                  if ($key -notin "PROMPT", "ComSpec") { echo "$key=$value" >> $env:GITHUB_ENV }
+              }
+          }
+
+      # ── Reference leg: the upstream xmake build, unchanged ─────────────
+      - name: xmake — configure
+        run: xmake f -m release --toolchain=msvc --vs=2026 --vs_toolset=${{ env.MSVC_VER }} -cyv
+
+      - name: xmake — build xrgui.example
+        run: xmake -v xrgui.example
+
+      # ── The leg this PR is about ───────────────────────────────────────
+      - name: Install mcpp
+        shell: pwsh
+        run: |
+          $url = "https://github.com/mcpp-community/mcpp/releases/latest/download/mcpp-windows-x86_64.zip"
+          Write-Host "Downloading mcpp from: $url"
+          Invoke-WebRequest -Uri $url -OutFile mcpp.zip
+          Expand-Archive mcpp.zip -DestinationPath C:\mcpp
+          $bin = (Get-ChildItem -Path C:\mcpp -Filter mcpp.exe -Recurse | Select-Object -First 1).Directory.FullName
+          if (-not $bin) { Write-Error "mcpp.exe not found in the archive"; exit 1 }
+          echo $bin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          & "$bin\mcpp.exe" --version
+
+      - name: Apply submodule patch
+        shell: pwsh
+        run: |
+          # One hoisted import in mo_yanxi_vulkan_wrapper -- mcpp's M1 scanner
+          # rejects an import inside a conditional preprocessor block. See the
+          # patch header. Idempotent: skip when it is already applied.
+          $p = "$PWD\mcpp\patches\mo_yanxi_vulkan_wrapper.patch"
+          Push-Location external/mo_yanxi_vulkan_wrapper
+          git apply --check $p 2>$null
+          if ($LASTEXITCODE -eq 0) { git apply $p; Write-Host "patch applied" }
+          else { Write-Host "patch already applied, skipping" }
+          Pop-Location
+
+      - name: mcpp — cache registry and build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.mcpp
+          key: mcpp-win-${{ hashFiles('mcpp.toml', 'mcpp/**/mcpp.toml') }}
+          restore-keys: mcpp-win-
+
+      - name: mcpp — build the library and xrgui_hello
+        run: mcpp build
+
+      - name: mcpp — build xrgui_example
+        run: mcpp build --features examples
+
+      - name: mcpp — build and run xrgui_tests
+        shell: pwsh
+        run: |
+          mcpp build --features tests
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $exe = Get-ChildItem -Path target -Filter xrgui_tests.exe -Recurse | Select-Object -First 1
+          if (-not $exe) { Write-Error "xrgui_tests.exe was not produced"; exit 1 }
+          Write-Host "Running $($exe.FullName)"
+          & $exe.FullName
+          if ($LASTEXITCODE -ne 0) { Write-Error "tests failed"; exit $LASTEXITCODE }
+
+      - name: Upload mcpp artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xrgui-mcpp-windows
+          path: target/**/bin/
+          if-no-files-found: ignore

@@ -2,9 +2,7 @@ module;
 
 #include <cassert>
 
-#ifndef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
 #include "plf_hive.h"
-#endif
 
 #include <mo_yanxi/adapted_attributes.hpp>
 
@@ -18,9 +16,6 @@ import mo_yanxi.allocator_aware_unique_ptr;
 import mo_yanxi.call_stream;
 import mo_yanxi.referenced_ptr;
 
-#ifdef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
-import <plf_hive.h>;
-#endif
 
 namespace mo_yanxi::gui{
 export

@@ -1,0 +1,39 @@
+# mcpp package for mo_yanxi.vulkan_wrapper (external/mo_yanxi_vulkan_wrapper).
+#
+# Transcribed from that repo's own xmake.lua:
+#
+#   add_files("./src/vk_wrap/**.cpp") / ("./src/vk_wrap/**.ixx")
+#   add_includedirs("external/VulkanMemoryAllocator/include", {public = true})
+#   add_includedirs($VULKAN_SDK/include, {public = true})   -> compat.vulkan instead
+#   add_defines("VK_USE_64_BIT_PTR_DEFINES=1", {public = true})
+#   MO_YANXI_VULKAN_WRAPPER_ENABLE_CHECK=0 on release
+#   add_deps("mo_yanxi.utility")
+#
+# VMA comes from the checked-out submodule rather than compat.vulkan-memory-allocator
+# on purpose: src/vk_wrap/util/vma.cpp already carries `#define VMA_IMPLEMENTATION`,
+# so taking the package -- which compiles its own implementation TU -- would give
+# every VMA symbol twice.
+[package]
+name    = "mo_yanxi_vulkan_wrapper"
+version = "0.1.0"
+
+[build]
+module_extensions = [".ixx"]
+
+sources = [
+  "../../external/mo_yanxi_vulkan_wrapper/src/vk_wrap/**/*.ixx",
+  "../../external/mo_yanxi_vulkan_wrapper/src/vk_wrap/**/*.cpp",
+]
+
+include_dirs = [
+  "../../external/mo_yanxi_vulkan_wrapper/external/VulkanMemoryAllocator/include",
+]
+
+defines = [
+  "VK_USE_64_BIT_PTR_DEFINES=1",
+  "MO_YANXI_VULKAN_WRAPPER_ENABLE_CHECK=0",
+]
+
+[dependencies]
+mo_yanxi_utility = { path = "../mo_yanxi_utility" }
+compat.vulkan    = "1.4.357.0"

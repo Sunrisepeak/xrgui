@@ -1,9 +1,7 @@
 module;
 
 
-#ifndef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
 #include "plf_hive.h"
-#endif
 
 #include <mo_yanxi/adapted_attributes.hpp>
 #include <mo_yanxi/enum_operator_gen.hpp>
@@ -19,9 +17,6 @@ import mo_yanxi.utility;
 import mo_yanxi.meta_programming;
 import std;
 
-#ifdef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
-import <plf_hive.h>;
-#endif
 
 namespace mo_yanxi::input_handle{
 

@@ -3,9 +3,7 @@ module;
 #include <vulkan/vulkan.h>
 #include <mo_yanxi/enum_operator_gen.hpp>
 
-#if !defined(XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE)
 #include <gch/small_vector.hpp>
-#endif
 
 #ifndef NDEBUG
 #define DEBUG_CHECK 1
@@ -23,9 +21,6 @@ import mo_yanxi.raw_byte_buffer;
 import std;
 import magic_enum;
 
-#ifdef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
-import <gch/small_vector.hpp>;
-#endif
 
 bool operator==(const VkExtent3D lhs, const VkExtent3D rhs) noexcept{
 	return std::memcmp(&lhs, &rhs, sizeof(VkExtent3D)) == 0;
