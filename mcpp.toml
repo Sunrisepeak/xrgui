@@ -47,6 +47,16 @@ include_dirs = [
   "mcpp/compat",                             # <nanosvg/nanosvg.h>, see [generated_files]
 ]
 
+# xmake: set_runtimes(is_mode("debug") and "MDd" or "MD") -- the dynamic CRT.
+# I had missed this line, and mcpp's default (self-contained, i.e. /MT on MSVC)
+# does not merely differ from xmake: it left std.ifc built one way and the
+# project's TUs the other, which cl reports as
+#     warning C5050: _MSVC_MT is defined in module command line and not in
+#                    current command line
+# and then fails for real in corecrt_malloc.h with
+#     error C2375: 'free': redefinition; different linkage
+cxx_runtime = "host-coupled"
+
 defines = [
   "MO_YANXI_ALLOCATOR_2D_USE_STD_MODULE",
   "MO_YANXI_ALLOCATOR_2D_HAS_MATH_VECTOR2",
