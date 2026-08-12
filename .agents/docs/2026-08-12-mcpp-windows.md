@@ -15,6 +15,11 @@ xmake 了，在这里再跑一遍等于每轮多装一次 VS 2026 却得不到�
 
 xmake 本身也不装：它那两个资产任务不过是 Python 脚本的薄包装，本 job 直接调脚本。
 
+**除 Vulkan SDK 和 MSVC 外的工具全部由 xlings 装**——node / python / slang / mcpp
+都在 xim-pkgindex 里，而 mcpp 本来就用这个 registry 解析自己的工具链和依赖包。
+一条 `xlings install node python slang mcpp` 取代了四个手写的 setup 步骤，
+版本也和构建自身读的是同一个索引。
+
 ## 对应关系
 
 | xmake.lua | mcpp |
