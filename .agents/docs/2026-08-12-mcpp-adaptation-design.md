@@ -1330,3 +1330,96 @@ VMA 自己取其余的。补在构造函数而不是调用点，是因为那个�
 的嵌套 submodule，属于别人的仓库，只从构建里摘掉、不动它的 `.gitmodules`）。
 450 个目标文件编出，仍然只有 `renderer.components.ixx` 一个 TU 卡在 §17 之后
 那个 GCC 缺陷上。
+
+
+---
+
+## 19. GCC 16 的 BMI 合并缺陷：定性、一处修复、两处未解
+
+### 症状
+
+```
+mo_yanxi.backend.vulkan.pipeline_manager: error: failed to read compiled module cluster 87: Bad file data
+…
+bits/ranges_base.h:512: fatal error: failed to load pendings for 'std::ranges::__access::_Begin'
+```
+
+先纠正 §17 里的一个判断：这**不是**伪装的 `recursive lazy load`。读 GCC 源码
+（`gcc/cp/module.cc` 的 `load_section`）可知 `set_error` 注释就写着
+"Set the error, unless it's already been set" —— 若走了递归惰性那条路，报出来的
+会是 `E_BAD_LAZY`。我们看到的 `E_BAD_DATA` 来自它下面那个分支，注释是
+`Oops, the section didn't set this slot`：簇读完了，但期望的绑定没被设置。
+
+### 触发条件（二分出来的，不是推的）
+
+三个条件同时满足才触发：
+
+1. 消费者 TU 里**实例化一个容器**，元素类型来自另一个模块单元；
+2. 该元素类型的特殊成员函数经**两条独立模块路径**可达；
+3. 两条路径互不可见。
+
+第 1 条很关键：`mr::vector<descriptor_slots>` 触发，`std::vector<descriptor_slots>`
+**同样触发**（所以与 `mr::` 无关），而单个 `descriptor_slots` 成员**不触发** ——
+容器才会强制实例化并序列化元素类型的特殊成员。
+
+### 已修复：renderer.components
+
+`renderer.components` 同时导入 `pipeline_manager` 与 `g2d.batch.backend.vulkan`，
+于是 `vk::descriptor_layout` / `vk::dynamic_descriptor_buffer` 的特殊成员有两条路
+可达。让 `pipeline_manager` 也导入 `g2d.batch.frontend`，两条路合成一条，问题消失。
+
+那行 import 本模块并不使用，源码注释里直说了，没有粉饰。
+
+**逐一排除的其他改法**（每条都重建了失败 TU 验证）：
+
+| 尝试 | 结果 |
+|---|---|
+| 把 pipeline_manager 拆成 base / graphic / compute 三个模块 | 故障跟着 `pipeline_manager_base` 换模块 |
+| 再把 base 并回 compute（消掉边界） | 故障留在 compute |
+| `config::create` 移到实现单元 | 无效 |
+| `descriptor_slots` 的析构/移动外联 | 无效 |
+| `get_pipelines` 等的 `auto` 返回改显式 | 无效 |
+| 调整导入顺序，让 `mo_yanxi.vk` 最先 | 无效 |
+| `-fno-module-lazy` | 故障移到 `g2d.batch.frontend`，全量还多一个失败 |
+| `--param=lazy-modules=1000` | 无效（`ulimit -n` 是 1048576，本就不是瓶颈） |
+| 更窄的共享导入：`vk.cmd` / `vk.sync_processor` / `type_register` / `raw_byte_buffer` / `g2d.batch.common` | 全部无效，只有 `batch.frontend` 有效 |
+
+### 未解：gui.infrastructure 的 `:scene`
+
+`ui_manager.ixx` 与 `element.ixx` 读不回 `:scene` 的 BMI
+（`cluster 615` / `failed to load pendings for 'std::_Sp_counted_deleter'`）。
+
+**这不是上一处修复引入的**：`ui_manager` 的 BMI 闭包里根本没有 `pipeline_manager`
+（查了 `.ddi.dd`）。它们之前没暴露，只是因为 ninja 在首个失败处就停了。
+
+这一处比前一处更棘手，因为触发面更宽：在 `ui_manager` 里实例化**任何** std 容器
+都会触发 —— `std::vector<int>`、`std::unordered_map<int,int>`、甚至
+`std::string`，而 `int` 成员和 `std::mutex` 成员不会。所以它不是"某个类型的问题"，
+是 `:scene` 的 BMI 对任何需要合并 std 实体的消费者都读不回来。
+
+已排除：
+
+- 消费者侧逐个删导入（`ui_manager` 5 个、`element` 6 个）—— 无一使其通过
+- 给 `:scene` 补 `audio.resources` / `heterogeneous` / `log` / `gui.style.interface` /
+  `gui.action` / `gui.flags` / `function_call_stack`
+- 给 `ui_manager` 补 `:elem_ptr` / `:defines` / `:object_pool` / `gui.renderer.frontend` /
+  `mo_yanxi.audio` / `gui.sound.manager`
+- `:scene` 的 10 个 `export import` 全部降级为普通 `import`
+- 删掉 `:scene` 里重复的 `import mo_yanxi.audio;`（该重复本身是缺陷，已修，但不是本因）
+- 删 `:scene` 的可删分区导入（`:defines` / `:elem_ptr` / `:tooltip_manager` /
+  `:dialog_manager` / `:cursor`）
+- `ui_manager` 里 `resources` 改为 `unique_ptr` 间接持有
+- 分区图查环 —— 无环
+- BMI 体量 —— `:scene` 只有 3M，远小于 `std.gcm` 的 31M，不是体量问题
+
+内容二分卡在 `scene` 类本身（L338–1081）：截断到 L1081 仍失败，再往里截断消费者
+就编不过，因为它们要用后面定义的成员。
+
+### 工具链无退路
+
+mcpp 索引里 GCC 最高就是 16.1.0（另有 15.1.0 / 13.3.0 / 11.5.0 / 9.4.0）。
+LLVM 22.1.8 可用，但 §16 已记录 clang 路线的结论。
+
+### 现状
+
+225 个目标文件编出，2 个 TU 失败，都是 `:scene` 这一处。
