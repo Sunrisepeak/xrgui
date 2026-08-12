@@ -88,32 +88,12 @@ jobs:
           }
           mcpp --version
 
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install tomli
-
       - name: Install Vulkan SDK
         run: |
           Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/${{ env.VULKAN_VER }}/windows/vulkansdk-windows-X64-${{ env.VULKAN_VER }}.exe" -OutFile VulkanSDK.exe
           Start-Process -FilePath .\VulkanSDK.exe -ArgumentList "--root C:\VulkanSDK --accept-licenses --default-answer --confirm-command install" -Wait -NoNewWindow
           echo "VULKAN_SDK=C:\VulkanSDK" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           echo "C:\VulkanSDK\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-
-      # xmake.lua's xrgui.gen_slang / xrgui.gen_icon tasks, called directly.
-      # gui.config/default/gui.assets.cpp does `#include <assets_summary.h>`, and
-      # the icons that header indexes are generated rather than committed.
-      - name: Generate assets (shaders and icons)
-        shell: pwsh
-        run: |
-          python properties/build_util/slang_builder.py `
-             (Get-Command slangc).Source `
-             properties/assets/shader/spv `
-             properties/assets_raw/shader/config.toml `
-             -j 30 --oneshot --show-cmds
-          python properties/assets_raw/svg_normalize.py `
-             -i properties/assets_raw/icons `
-             -o properties/assets_raw/gen/icons
 
       # ── MSVC 14.52 preview, as the xmake workflow installs it ──────────
       - name: Install VS 2026 Insider Build Tools (MSVC ${{ env.MSVC_VER }} preview)
@@ -173,6 +153,18 @@ jobs:
 
       - name: mcpp — build the library and xrgui_hello
         run: mcpp build
+
+      # build.mcpp runs the two asset generators, and neither reports failure
+      # through its exit status -- svg_normalize.py returns 0 even when its npx
+      # child crashes. Assert on what they were supposed to produce.
+      - name: Assert generated assets exist
+        shell: pwsh
+        run: |
+          $svg = @(Get-ChildItem properties/assets_raw/gen -Filter *.svg -Recurse -ErrorAction SilentlyContinue)
+          $spv = @(Get-ChildItem properties/assets/shader/spv -Filter *.spv -Recurse -ErrorAction SilentlyContinue)
+          Write-Host "normalized icons: $($svg.Count)   compiled shaders: $($spv.Count)"
+          if ($svg.Count -eq 0) { Write-Error "build.mcpp produced no normalized icons"; exit 1 }
+          if ($spv.Count -eq 0) { Write-Error "build.mcpp produced no SPIR-V shaders"; exit 1 }
 
       - name: mcpp — build xrgui_example
         run: mcpp build --features examples

@@ -15,6 +15,28 @@ xmake 了，在这里再跑一遍等于每轮多装一次 VS 2026 却得不到�
 
 xmake 本身也不装：它那两个资产任务不过是 Python 脚本的薄包装，本 job 直接调脚本。
 
+### 资产生成在 `build.mcpp` 里
+
+xmake 的 `xrgui.gen_icon` / `xrgui.gen_slang` 两个任务不过是 Python 脚本的薄包装，
+现在由 `build.mcpp` 直接调用，所以 `mcpp build` 是自洽的，本地检出也能拿到同样的资产。
+
+| 工具 | 谁需要 | 干什么 |
+|---|---|---|
+| Python | 两个生成器的驱动 | `slang_builder.py` 并行调 slangc 编 `.slang` → `.spv`（带增量哈希）；`svg_normalize.py` 管缓存与任务编排 |
+| Node | **只有** `svg_normalize.py` | `npx --yes oslllo-svg-fixer`，跑浏览器内核把 SVG 描边转填充、合并路径，好让 msdfgen 能吃 |
+| slangc | `slang_builder.py` | 着色器编译器本体 |
+
+**mcpp 自己一个都不需要**——它是自包含二进制，C++ 构建只要工具链。所以两个生成器
+都是「探测到工具才跑，否则跳过并打日志」：这棵树必须在没有 python/node/slangc 时
+也能构建，那正是空 summary 存在的意义。
+
+生成器失败**只告警不中止**，因为它们的退出码不可信：`svg_normalize.py` 在它的 npx
+子进程崩掉时仍然返回 0。真正的把关是 CI 里的 `Assert generated assets exist`——
+断言产物数量，那是唯一有意义的信号。
+
+（`slang_builder.py` 用的是 Python 3.11+ 自带的 `tomllib`，只在更老版本上才回退到
+`tomli`。xlings 装的是 3.13，所以上游 workflow 里那句 `pip install tomli` 不需要。）
+
 **除 Vulkan SDK 和 MSVC 外的工具全部由 xlings 装**——node / python / slang / mcpp
 都在 xim-pkgindex 里，而 mcpp 本来就用这个 registry 解析自己的工具链和依赖包。
 一条 `xlings install node python slang mcpp` 取代了四个手写的 setup 步骤，

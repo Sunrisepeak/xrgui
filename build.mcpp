@@ -13,8 +13,22 @@
 // than xmake's `utils.binary.bin2c` dependency and removes one more reason to
 // need a host toolchain just to build.
 //
-// The generated tree is written to the OUTPUT directory, never into
-// properties/ -- a build must not dirty the source tree.
+// Before any of that, this also runs the two upstream asset generators that
+// xmake exposes as `xmake xrgui.gen_icon` / `xmake xrgui.gen_slang`:
+//
+//   properties/assets_raw/svg_normalize.py   icons -> normalized SVGs
+//   properties/build_util/slang_builder.py   .slang -> .spv
+//
+// so that `mcpp build` is self-contained and a local checkout gets the same
+// assets CI does. Both are SKIPPED, with a message, when their tools are not
+// installed -- python for the first, python and slangc for the second. That is
+// deliberate: the tree must still build without them, which is what the empty
+// summary below is for.
+//
+// The bin2c tree is written to the OUTPUT directory, never into properties/.
+// The two generators above are the exception and write where upstream puts
+// them (properties/assets_raw/gen, properties/assets/shader/spv), because those
+// are runtime assets the application loads by path, not build inputs.
 //
 // Note the summary is emitted even when there are no SVGs at all. That is the
 // normal state of a fresh checkout: properties/assets_raw/gen/ is produced by
@@ -25,6 +39,31 @@ import mcpp;
 import std;
 
 namespace {
+
+// Is `tool` callable? Runs `tool --version` with output discarded. Cheap enough
+// to do twice, and far more reliable than guessing at install locations.
+bool have_tool(std::string_view tool) {
+#ifdef _WIN32
+    const auto probe = std::format("{} --version >NUL 2>&1", tool);
+#else
+    const auto probe = std::format("{} --version >/dev/null 2>&1", tool);
+#endif
+    return std::system(probe.c_str()) == 0;
+}
+
+// Runs a generator and reports failure loudly: a shader that silently failed to
+// compile turns into a missing file at runtime, which is much harder to trace.
+// Reports failure but does not stop the build. Two reasons: these generators
+// are optional by design (the tree has to build without python/node/slangc),
+// and their exit status is not trustworthy anyway -- svg_normalize.py returns 0
+// even when the npx child crashes. CI asserts on the OUTPUTS instead, which is
+// the only signal that actually means anything here.
+void run_generator(std::string_view what, const std::string& cmd) {
+    std::println("build.mcpp: {} ...", what);
+    if (const int rc = std::system(cmd.c_str()); rc != 0) {
+        std::println("build.mcpp: WARNING: {} exited {}\n  {}", what, rc, cmd);
+    }
+}
 
 std::string sanitize(std::string_view s) {
     std::string out;
@@ -88,6 +127,42 @@ int main() {
         std::filesystem::path{mcpp::out_dir()} / ".assets/includes";
 
     std::filesystem::create_directories(out_dir);
+
+    // ---- upstream asset generators (xmake's xrgui.gen_icon / gen_slang) ----
+    const bool have_python = have_tool("python");
+
+    const auto icons_in = root / "properties/assets_raw/icons";
+    if (have_python && std::filesystem::is_directory(icons_in)) {
+        const auto script = root / "properties/assets_raw/svg_normalize.py";
+        if (std::filesystem::exists(script)) {
+            const auto cmd = std::format(
+                "python \"{}\" -i \"{}\" -o \"{}\"",
+                script.string(), icons_in.string(),
+                (root / "properties/assets_raw/gen/icons").string());
+            run_generator("normalizing icons", cmd);
+        }
+    } else if (!have_python) {
+        std::println("build.mcpp: python not found, skipping icon normalization");
+    }
+
+    const auto shader_cfg = root / "properties/assets_raw/shader/config.toml";
+    if (have_python && have_tool("slangc") && std::filesystem::exists(shader_cfg)) {
+        const auto script = root / "properties/build_util/slang_builder.py";
+        if (std::filesystem::exists(script)) {
+            const auto cmd = std::format(
+                "python \"{}\" slangc \"{}\" \"{}\" -j 30 --oneshot",
+                script.string(),
+                (root / "properties/assets/shader/spv").string(),
+                shader_cfg.string());
+            run_generator("compiling slang shaders", cmd);
+        }
+    } else if (std::filesystem::exists(shader_cfg)) {
+        std::println("build.mcpp: python and/or slangc not found, skipping shader compilation");
+    }
+
+    mcpp::rerun_if_changed_glob("properties/assets_raw/icons/**/*.svg");
+    mcpp::rerun_if_changed_glob("properties/assets_raw/shader/**/*.slang");
+    mcpp::rerun_if_changed_glob("properties/assets_raw/shader/config.toml");
 
     std::vector<std::filesystem::path> svgs;
     if (std::filesystem::is_directory(src_base)) {
