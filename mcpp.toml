@@ -132,7 +132,7 @@ compat.gtest = "1.17.0"
 # non-Windows host, which is how it gets checked before CI sees it.
 [target.windows.build]
 cxxflags = ["/bigobj", "/utf-8"]
-ldflags  = ["advapi32.lib", "imm32.lib", "ole32.lib", "shell32.lib", "user32.lib"]
+ldflags  = ["-ladvapi32", "-limm32", "-lole32", "-lshell32", "-luser32"]
 
 [toolchain]
 # This project is MSVC-first and upstream's MSVC CI is green; mcpp has no reason
