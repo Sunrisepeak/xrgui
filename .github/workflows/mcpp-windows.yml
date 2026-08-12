@@ -18,6 +18,13 @@ on:
     branches: [ "master" ]
   workflow_dispatch:
 
+# A push supersedes whatever was already running for the same ref. Each run
+# installs VS 2026 Insider and the Vulkan SDK, so leaving stale runs alive costs
+# real runner time for a result nobody will read.
+concurrency:
+  group: mcpp-windows-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   windows-msvc:
     runs-on: windows-latest
