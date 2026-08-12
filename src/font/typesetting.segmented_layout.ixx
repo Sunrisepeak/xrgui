@@ -1,3 +1,11 @@
+module;
+// gch::small_vector_iterator's operator-(it, it) is a namespace-scope
+// template found by ADL, and mo_yanxi.typesetting.rich_text includes
+// small_vector in its global module fragment -- where a declaration the
+// purview never names is discarded rather than written into the BMI. This
+// TU instantiates algorithms over those iterators, so it has to see the
+// header itself rather than hope to inherit it.
+#include <gch/small_vector.hpp>
 export module mo_yanxi.typesetting.segmented_layout;
 
 import std;
