@@ -7,7 +7,10 @@ module;
 export module mo_yanxi.call_stream;
 
 import std;
-import :call_stream_buffer;
+// An INTERFACE partition (declared `export module M:P;`) must be exported by
+// the primary module interface unit; a plain `import` is ill-formed. The
+// partition exports nothing itself, so this widens no public surface.
+export import :call_stream_buffer;
 
 #define USE_TAIL_DISPATCH
 #ifdef USE_TAIL_DISPATCH

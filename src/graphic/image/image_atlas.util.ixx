@@ -15,6 +15,10 @@ export import mo_yanxi.referenced_ptr;
 export import mo_yanxi.handle_wrapper;
 
 import mo_yanxi.vk;
+// `vk::allocator` / `vk::allocator_usage` live in the mo_yanxi::vk namespace but
+// are provided by the mo_yanxi.vk.util MODULE, which mo_yanxi.vk does not
+// re-export. Importing it is what makes those names nameable here.
+import mo_yanxi.vk.util;
 import mo_yanxi.allocator2d;
 import mo_yanxi.log;
 
@@ -303,10 +307,13 @@ public:
 	[[nodiscard]] sub_page() = default;
 
 	[[nodiscard]] explicit sub_page(
-		vk::allocator& allocator,
+		vk::allocator& alloc,
 		const VkExtent2D extent_2d
 	)
-	: texture(allocator, extent_2d), allocator({extent_2d.width, extent_2d.height}){
+	// The parameter is `alloc`, not `allocator`: this class already has an
+	// `allocator2d<> allocator` member, and using the one name for both makes
+	// GCC fail to parse `vk::allocator&` at all.
+	: texture(alloc, extent_2d), allocator({extent_2d.width, extent_2d.height}){
 	}
 
 	[[nodiscard]] explicit sub_page(

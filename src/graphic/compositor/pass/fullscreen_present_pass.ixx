@@ -7,6 +7,10 @@ export module mo_yanxi.graphic.compositor.fullscreen_present_pass;
 import std;
 export import mo_yanxi.graphic.compositor.manager;
 import mo_yanxi.vk;
+// `vk::allocator` / `vk::allocator_usage` live in the mo_yanxi::vk namespace but
+// are provided by the mo_yanxi.vk.util MODULE, which mo_yanxi.vk does not
+// re-export. Importing it is what makes those names nameable here.
+import mo_yanxi.vk.util;
 import mo_yanxi.vk.cmd;
 
 namespace mo_yanxi::graphic::compositor{

@@ -3,9 +3,7 @@ module;
 #include <mo_yanxi/adapted_attributes.hpp>
 
 
-#ifndef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
 #include <beman/inplace_vector.hpp>
-#endif
 
 
 export module mo_yanxi.graphic.g2d.fringe;
@@ -16,10 +14,6 @@ export import mo_yanxi.graphic.g2d;
 import mo_yanxi.byte_pool;
 
 import std;
-
-#ifdef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
-import <beman/inplace_vector.hpp>;
-#endif
 
 
 namespace mo_yanxi::graphic::g2d::fringe{

@@ -1,0 +1,47 @@
+diff --git a/include/mo_yanxi/allocator2d.hpp b/include/mo_yanxi/allocator2d.hpp
+index b4b2da0..4cdc9f6 100644
+--- a/include/mo_yanxi/allocator2d.hpp
++++ b/include/mo_yanxi/allocator2d.hpp
+@@ -6,7 +6,14 @@
+ #endif
+ 
+ #ifdef MO_YANXI_ALLOCATOR_2D_USE_STD_MODULE
++// Guarded so a module interface that #includes this header AFTER its module
++// declaration can do the import itself: an import introduced by a #include in
++// the module purview is ill-formed ("post-module-declaration imports must not
++// be from header inclusion"). Define MO_YANXI_ALLOCATOR_2D_EXTERNAL_IMPORTS
++// and issue `import std;` before the include.
++#ifndef MO_YANXI_ALLOCATOR_2D_EXTERNAL_IMPORTS
+ import std;
++#endif
+ #else
+ #include <utility>
+ #include <version>
+@@ -60,7 +67,9 @@ import std;
+ 
+ 
+ #ifdef MO_YANXI_ALLOCATOR_2D_HAS_MATH_VECTOR2
++#ifndef MO_YANXI_ALLOCATOR_2D_EXTERNAL_IMPORTS
+ import mo_yanxi.math.vector2;
++#endif
+ #else
+ 
+ 
+diff --git a/include/mo_yanxi/allocator2d.ixx b/include/mo_yanxi/allocator2d.ixx
+index 73ab279..a729cd0 100644
+--- a/include/mo_yanxi/allocator2d.ixx
++++ b/include/mo_yanxi/allocator2d.ixx
+@@ -5,6 +5,13 @@ module;
+ 
+ export module mo_yanxi.allocator2d;
+ 
++// The imports live here rather than inside allocator2d.hpp: an import that
++// arrives through a #include after the module declaration is ill-formed.
++// MO_YANXI_ALLOCATOR_2D_EXTERNAL_IMPORTS tells the header they are done.
++import std;
++import mo_yanxi.math.vector2;
++
+ #define MO_YANXI_ALLOCATOR_2D_ENABLE_MODULE
++#define MO_YANXI_ALLOCATOR_2D_EXTERNAL_IMPORTS
+ #include "allocator2d.hpp"
+ 

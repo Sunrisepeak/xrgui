@@ -3,9 +3,7 @@ module;
 #include <vulkan/vulkan.h>
 #include <mo_yanxi/enum_operator_gen.hpp>
 
-#if !defined(XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE)
 #include <gch/small_vector.hpp>
-#endif
 
 #ifndef NDEBUG
 #define DEBUG_CHECK 1
@@ -22,10 +20,6 @@ import mo_yanxi.math.vector2;
 import mo_yanxi.raw_byte_buffer;
 import std;
 import magic_enum;
-
-#ifdef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
-import <gch/small_vector.hpp>;
-#endif
 
 bool operator==(const VkExtent3D lhs, const VkExtent3D rhs) noexcept{
 	return std::memcmp(&lhs, &rhs, sizeof(VkExtent3D)) == 0;
@@ -1009,7 +1003,9 @@ struct sub_pass_setup{
 }
 
 
-export
+// Not exported: a specialization of a std template is attached to the GLOBAL
+// module, and `export` on such a declaration is ill-formed (GCC: "explicit
+// specializations are not permitted here"). It stays reachable to importers.
 template<>
 struct std::hash<mo_yanxi::graphic::compositor::binding_info>{
 	static std::size_t operator()(const mo_yanxi::graphic::compositor::binding_info info) noexcept{

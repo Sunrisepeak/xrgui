@@ -632,8 +632,23 @@ struct alignas(instr_required_align) quad_group{
 
 
 
+	// `!std::convertible_to<const Ty&, quad_group>` used to sit in this
+	// requires-clause and is gone: deciding whether something converts to
+	// quad_group has to consider THIS constructor, so the constraint referred
+	// to itself. GCC rejects that outright ("satisfaction of atomic constraint
+	// ... depends on itself"); MSVC never checked.
+	//
+	// The non-recursive guard below covers what that clause covered in
+	// practice -- a quad_group (or cv/ref-qualified one) must not be hijacked
+	// by the scalar broadcast. What is genuinely lost is the exotic case of a
+	// Ty carrying its own `operator quad_group<T>()`; such a type would now
+	// pick this constructor if T is also constructible from it. No type in
+	// this codebase does that, and there is no way to ask the question without
+	// asking it of this constructor.
 	template <typename Ty>
-		requires (std::constructible_from<T, const Ty&> && !std::convertible_to<const Ty&, quad_group> && !spec_of<Ty, quad_group>)
+		requires (std::constructible_from<T, const Ty&>
+			&& !std::same_as<std::remove_cvref_t<Ty>, quad_group>
+			&& !spec_of<std::remove_cvref_t<Ty>, quad_group>)
 	[[nodiscard]] FORCE_INLINE explicit(false) constexpr quad_group(const Ty& v) noexcept : values{T(v), T(v), T(v), T(v)}{}
 
 	template <typename Ty>

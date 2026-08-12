@@ -1,13 +1,14 @@
 module;
 
 
-#ifndef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
 #include "plf_hive.h"
-#endif
 
 #include <mo_yanxi/adapted_attributes.hpp>
 #include <mo_yanxi/enum_operator_gen.hpp>
 
+// `func` is a void*; converting it to a function pointer needs
+// reinterpret_cast -- static_cast between object and function pointers is
+// ill-formed. MSVC accepts it as an extension.
 export module mo_yanxi.input_handle:key_binding;
 
 import :constants;
@@ -18,10 +19,6 @@ import mo_yanxi.utility;
 
 import mo_yanxi.meta_programming;
 import std;
-
-#ifdef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
-import <plf_hive.h>;
-#endif
 
 namespace mo_yanxi::input_handle{
 
@@ -106,7 +103,7 @@ export
         CHECKED_ASSUME(func != nullptr);
         CHECKED_ASSUME(actual.key_code == this->key_code);
 
-        return static_cast<typename key_binding<ParamTy...>::function_ptr>(func)(actual, press_dur, std::forward<ParamTy>(args)...);
+        return reinterpret_cast<typename key_binding<ParamTy...>::function_ptr>(func)(actual, press_dur, std::forward<ParamTy>(args)...);
     }
 
     export
@@ -132,7 +129,7 @@ export
         template <typename ... ParamTy>
         FORCE_INLINE void cast_and_exec(math::vec2 pos, ParamTy... args) const{
             CHECKED_ASSUME(func != nullptr);
-            return static_cast<function_ptr<ParamTy...>>(func)(pos, std::forward<ParamTy>(args)...);
+            return reinterpret_cast<function_ptr<ParamTy...>>(func)(pos, std::forward<ParamTy>(args)...);
         }
 
         bool operator==(const pos_binding&) const noexcept = default;
@@ -159,7 +156,7 @@ export
         template <typename ... ParamTy>
         FORCE_INLINE void cast_and_exec(bool inbounded, math::vec2 pos, ParamTy... args) const{
             CHECKED_ASSUME(func != nullptr);
-            return static_cast<function_ptr<ParamTy...>>(func)(inbounded, pos, std::forward<ParamTy>(args)...);
+            return reinterpret_cast<function_ptr<ParamTy...>>(func)(inbounded, pos, std::forward<ParamTy>(args)...);
         }
 
         bool operator==(const inbound_binding&) const noexcept = default;

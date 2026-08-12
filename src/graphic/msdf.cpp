@@ -5,7 +5,7 @@ module;
 #define MO_YANXI_USE_COMPLEX_SVG 0
 #endif
 
-#include <nanosvg/nanosvg.h>
+#include <nanosvg.h>
 
 #if MO_YANXI_USE_COMPLEX_SVG
 #include <ft2build.h>
@@ -212,7 +212,7 @@ clipper2::Paths64 convert_and_fix_outline(FT_Outline& outline){
 
 void convert_paths_to_shape(const clipper2::Paths64& paths, msdfgen::Shape& shape) {
 	for (const auto& path : paths) {
-		const size_t size = path.size();
+		const std::size_t size = path.size();
 		// 忽略无法构成面积的路径
 		if (size < 3) continue;
 
@@ -469,7 +469,7 @@ void write_to_bitmap(bitmap& bitmap, const msdfgen::Bitmap<float, 1>& region){
 	}
 }
 
-bitmap msdf::load_shape(
+bitmap load_shape(
 	const svg_info& shape,
 	unsigned w,
 	unsigned h,
@@ -500,7 +500,7 @@ bitmap msdf::load_shape(
 	return bitmap;
 }
 
-bitmap msdf::load_glyph(
+bitmap load_glyph(
 	msdfgen::FontHandle* face, msdfgen::GlyphIndex code,
 	unsigned target_w, unsigned target_h, int border,
 	double font_w, double font_h,
@@ -744,7 +744,7 @@ void add_ring_contour_split(msdfgen::Shape& shape, double size, double radius, d
     add_split_corner(c_bl, {-1, 0}, {0, -1}, {0, -1}, {1, 0});
 }
 
-svg_info msdf::create_border(double radius, double width, double k){
+svg_info create_border(double radius, double width, double k){
 	using namespace msdfgen;
 
 	Shape shape;
@@ -773,7 +773,7 @@ svg_info msdf::create_border(double radius, double width, double k){
 	return {shape, {border_size, border_size}};
 }
 
-svg_info msdf::create_solid_border(double radius, double k){
+svg_info create_solid_border(double radius, double k){
 	using namespace msdfgen;
 
 	// 创建形状对象
@@ -885,7 +885,7 @@ svg_info create_capsule_smooth(double width, double height, double exponent){
 	}
 	points.push_back(points[0]);
 
-	for(size_t i = 0; i < points.size() - 1; ++i){
+	for(std::size_t i = 0; i < points.size() - 1; ++i){
 		contour.addEdge(new LinearSegment(points[i], points[i + 1]));
 	}
 

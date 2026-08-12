@@ -48,13 +48,13 @@ struct binary_diff_trace{
 	};
 
 	struct export_record{
-		tag tag;
+		binary_diff_trace::tag tag;
 		unsigned offset;
 		std::span<const std::byte> range;
 	};
 
 	struct record{
-		tag tag;
+		binary_diff_trace::tag tag;
 		sub_span src_span;
 		unsigned logical_offset;
 		unsigned count;
@@ -69,7 +69,7 @@ private:
 	};
 
 	struct entry{
-		tag tag;
+		binary_diff_trace::tag tag;
 		op_type type;
 
 
@@ -171,7 +171,7 @@ public:
 			auto phys_span = rec.src_span.to_span(record_data_.data());
 
 
-			for(size_t i = 0; i < data.size(); ++i){
+			for(std::size_t i = 0; i < data.size(); ++i){
 				entry_diffs_[diff_off + i] = phys_span[rel_offset + i] ^ data[i];
 			}
 

@@ -10,9 +10,7 @@ module;
 #include <mo_yanxi/adapted_attributes.hpp>
 #include <mo_yanxi/enum_operator_gen.hpp>
 
-#ifndef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
 #include <msdfgen/msdfgen-ext.h>
-#endif
 
 
 export module mo_yanxi.font;
@@ -24,10 +22,6 @@ import mo_yanxi.handle_wrapper;
 import mo_yanxi.concurrent.guard;
 import mo_yanxi.msdf_adaptor;
 import mo_yanxi.log;
-
-#ifdef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
-import <msdfgen/msdfgen-ext.h>;
-#endif
 
 import std;
 
@@ -596,7 +590,10 @@ private:
 	}
 
 	[[nodiscard]] static std::vector<std::byte> read_file(const wchar_t* fontpath) {
-		std::ifstream file(fontpath, std::ios::binary | std::ios::ate);
+		// std::ifstream has no const wchar_t* constructor -- that is an MSVC
+		// extension. std::filesystem::path accepts wide strings portably and
+		// the path overload below is the standard way in.
+		std::ifstream file(std::filesystem::path{fontpath}, std::ios::binary | std::ios::ate);
 		return read_file(file);
 	}
 
@@ -706,18 +703,4 @@ struct std::hash<mo_yanxi::font::glyph_identity>{ // NOLINT(*-dcl58-cpp)
 	}
 };
 
-module : private;
-
-
-void mo_yanxi::font::check(FT_Error error){
-	if(!error) return;
-
-#if DEBUG_CHECK
-	const char* err = FT_Error_String(error);
-	log::error({"Freetype"}, "error {}: {}", error, err);
-#else
-	log::error({"Freetype"}, "error {}", error);
-#endif
-
-	throw std::runtime_error("Freetype Failed");
-}
+// `check`'s definition lives in font.cpp -- see the note there.

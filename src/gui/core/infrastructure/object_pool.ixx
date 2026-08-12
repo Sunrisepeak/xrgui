@@ -1,18 +1,12 @@
 module;
 
 #include <mo_yanxi/adapted_attributes.hpp>
-#ifndef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
 #include <gtl/phmap.hpp>
-#endif
 
 export module mo_yanxi.gui.infrastructure:object_pool;
 
 import std;
 import mo_yanxi.type_register;
-
-#ifdef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
-import <gtl/phmap.hpp>;
-#endif
 
 namespace mo_yanxi::gui{
 template <typename T, bool destroyOnRelease = true, typename Allocator = std::allocator<T>>

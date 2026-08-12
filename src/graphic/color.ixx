@@ -811,17 +811,21 @@ constexpr auto proj(Rng&& rng,
 }
 }
 
-export
+// Not exported: a specialization of a std template is attached to the GLOBAL
+// module, and `export` on such a declaration is ill-formed (GCC: "explicit
+// specializations are not permitted here"). It stays reachable to importers.
 template <>
-struct ::std::hash<mo_yanxi::graphic::color>{
-	size_t operator()(const mo_yanxi::graphic::color& obj) const noexcept{
+struct std::hash<mo_yanxi::graphic::color>{
+	std::size_t operator()(const mo_yanxi::graphic::color& obj) const noexcept{
 		return obj.hash_value();
 	}
 };
 
-export
+// Not exported: a specialization of a std template is attached to the GLOBAL
+// module, and `export` on such a declaration is ill-formed (GCC: "explicit
+// specializations are not permitted here"). It stays reachable to importers.
 template <>
-struct ::std::formatter<mo_yanxi::graphic::color>{
+struct std::formatter<mo_yanxi::graphic::color>{
 	bool haveAlpha{false};
 	bool haveWrapper{false};
 	bool haveHexHead{false};

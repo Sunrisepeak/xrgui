@@ -34,7 +34,7 @@ namespace mo_yanxi::graphic{
 	struct gradient{
 		T src;
 		T dst;
-		interp interp{};
+		graphic::interp interp{};   // qualified: an unqualified `interp` here would change the meaning of the name
 
 		constexpr T operator[](float prog) const noexcept{
 			return mix_func<T>::operator()(src, dst, interp(prog));

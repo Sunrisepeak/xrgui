@@ -7,6 +7,9 @@ module;
 
 module mo_yanxi.graphic.image_atlas;
 
+// vk::allocator / vk::allocator_usage are in the mo_yanxi::vk namespace but come
+// from the mo_yanxi.vk.util MODULE, which mo_yanxi.vk does not re-export.
+import mo_yanxi.vk.util;
 import mo_yanxi.vk.cmd;
 import mo_yanxi.platform.thread;
 import mo_yanxi.log;

@@ -5,6 +5,9 @@ module;
 export module mo_yanxi.graphic.compositor.bloom;
 
 import std;
+// vk::allocator_usage is in the mo_yanxi::vk namespace but comes from the
+// mo_yanxi.vk.util MODULE, which mo_yanxi.vk does not re-export.
+import mo_yanxi.vk.util;
 export import mo_yanxi.graphic.compositor.sub_pass;
 import mo_yanxi.vk;
 import mo_yanxi.math.vector2;

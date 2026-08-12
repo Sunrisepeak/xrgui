@@ -14,6 +14,19 @@ export import mo_yanxi.gui.renderer.frontend;
 import std;
 import mo_yanxi.utility;
 import mo_yanxi.vk.record_context;
+// GCC 需要这一行才能读回本模块的 BMI，尽管本模块并不使用 batch.frontend。
+//
+// 消费者 renderer.components 同时导入本模块和 g2d.batch.backend.vulkan，
+// 于是 vk::descriptor_layout / vk::dynamic_descriptor_buffer 的特殊成员函数
+// 经两条独立路径可达 —— 具体触发点是本模块里 mr::vector<descriptor_slots>
+// 的实例化。GCC 合并这两份视图时失败：
+//   failed to read compiled module cluster N: Bad file data
+// 让本模块也看见 batch.frontend，两条路径就退化成一条，合并不再发生。
+//
+// 已排除的其他改法（.agents/docs §19 有完整记录）：拆分本模块、把 create /
+// descriptor_slots 的特殊成员外联、改导入顺序、-fno-module-lazy、
+// --param=lazy-modules。改导入顺序无效，其余只是让故障换个模块出现。
+import mo_yanxi.graphic.g2d.batch.frontend;
 import mo_yanxi.graphic.g2d;
 import mo_yanxi.graphic.shader_reflect;
 import mo_yanxi.vk.util.uniform;
@@ -171,20 +184,39 @@ public:
 		return (unsigned)(blend_states.size() / blending_state_count);
 	}
 
-	template <typename S>
-	auto& operator[](this S& self, const unsigned attachment_idx, const unsigned blending_state_idx) noexcept{
-		assert(blending_state_idx < self.blending_state_count);
-		return self.blend_states[attachment_idx * self.blending_state_count + blending_state_idx];
+	// Ordinary const/non-const overload pairs rather than deducing-this
+	// templates. GCC 16 writes a BMI for this module that it then cannot read
+	// back ("failed to read compiled module cluster N: Bad file data") when
+	// these are `template <typename S> ... (this S& self, ...)`. The pairs are
+	// more typing and no less correct.
+	VkPipelineColorBlendAttachmentState& operator[](
+		const unsigned attachment_idx, const unsigned blending_state_idx) noexcept{
+		assert(blending_state_idx < blending_state_count);
+		return blend_states[attachment_idx * blending_state_count + blending_state_idx];
 	}
 
-	template <typename S>
-	[[nodiscard]] auto get_state_of(this S& self, const unsigned attachment_idx) noexcept{
-		return std::span{self.blend_states.data() + attachment_idx * blending_state_count, blending_state_count};
+	const VkPipelineColorBlendAttachmentState& operator[](
+		const unsigned attachment_idx, const unsigned blending_state_idx) const noexcept{
+		assert(blending_state_idx < blending_state_count);
+		return blend_states[attachment_idx * blending_state_count + blending_state_idx];
 	}
 
-	template <typename S>
-	[[nodiscard]] auto get_state_range(this S& self) noexcept {
-		return self.blend_states | std::views::chunk(self.blending_state_count);
+	[[nodiscard]] std::span<VkPipelineColorBlendAttachmentState> get_state_of(
+		const unsigned attachment_idx) noexcept{
+		return std::span{blend_states.data() + attachment_idx * blending_state_count, blending_state_count};
+	}
+
+	[[nodiscard]] std::span<const VkPipelineColorBlendAttachmentState> get_state_of(
+		const unsigned attachment_idx) const noexcept{
+		return std::span{blend_states.data() + attachment_idx * blending_state_count, blending_state_count};
+	}
+
+	[[nodiscard]] auto get_state_range() noexcept {
+		return blend_states | std::views::chunk(blending_state_count);
+	}
+
+	[[nodiscard]] auto get_state_range() const noexcept {
+		return blend_states | std::views::chunk(blending_state_count);
 	}
 };
 
@@ -581,15 +613,24 @@ protected:
 
 
 public:
-	template <typename S>
-	[[nodiscard]] auto get_pipelines(this S& self) noexcept{
-		return std::span{self.pipelines};
+	// const/non-const pairs rather than deducing-this -- see the note in
+	// dynamic_blending_config.
+	[[nodiscard]] auto get_pipelines() noexcept{
+		return std::span{pipelines};
 	}
 
-	template <typename S>
-	[[nodiscard]] auto& get_custom_descriptor(this S& self, std::size_t index){
-		assert(index < self.custom_descriptors.size());
-		return self.custom_descriptors[index];
+	[[nodiscard]] auto get_pipelines() const noexcept{
+		return std::span{pipelines};
+	}
+
+	[[nodiscard]] auto& get_custom_descriptor(std::size_t index){
+		assert(index < custom_descriptors.size());
+		return custom_descriptors[index];
+	}
+
+	[[nodiscard]] const auto& get_custom_descriptor(std::size_t index) const{
+		assert(index < custom_descriptors.size());
+		return custom_descriptors[index];
 	}
 
 	[[nodiscard]] std::size_t get_custom_descriptor_count() const noexcept{

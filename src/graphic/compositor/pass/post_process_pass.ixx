@@ -3,9 +3,7 @@ module;
 #include <vulkan/vulkan.h>
 #include <cassert>
 
-#ifndef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
 #include <spirv_reflect.h>;
-#endif
 
 export module mo_yanxi.graphic.compositor.post_process_pass;
 
@@ -16,14 +14,14 @@ export import mo_yanxi.graphic.shader_reflect;
 
 export import mo_yanxi.math.vector2;
 export import mo_yanxi.vk;
+// `vk::allocator` / `vk::allocator_usage` live in the mo_yanxi::vk namespace but
+// are provided by the mo_yanxi.vk.util MODULE, which mo_yanxi.vk does not
+// re-export. Importing it is what makes those names nameable here.
+import mo_yanxi.vk.util;
 
 import mo_yanxi.meta_programming;
 import mo_yanxi.utility;
 import mo_yanxi.raw_byte_buffer;
-
-#ifdef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
-import <spirv_reflect.h>;
-#endif
 
 namespace mo_yanxi::graphic::compositor{
 namespace{

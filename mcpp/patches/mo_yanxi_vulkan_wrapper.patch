@@ -1,0 +1,231 @@
+diff --git a/mcpp.toml b/mcpp.toml
+new file mode 100644
+index 0000000..fae7101
+--- /dev/null
++++ b/mcpp.toml
+@@ -0,0 +1,33 @@
++# mcpp manifest for this library, living beside its own sources.
++# Delivered through xrgui's mcpp/patches/ until it is upstreamed; once it is,
++# nothing here has to change.
++
++[package]
++name        = "vulkan_wrapper"
++version     = "0.1.0"
++standard    = "c++23"
++description = "mo_yanxi Vulkan wrapper modules"
++license     = "BSD-2-Clause"
++
++[build]
++module_extensions = [".ixx"]
++
++sources = [
++  "src/vk_wrap/**/*.ixx",
++  "src/vk_wrap/**/*.cpp",
++]
++
++defines = ["VK_USE_64_BIT_PTR_DEFINES=1", "MO_YANXI_VULKAN_WRAPPER_ENABLE_CHECK=0"]
++
++cxxflags = ["-Wno-interference-size", "-Wno-changes-meaning"]
++
++[dependencies]
++utility = { path = "external/mo_yanxi_utility" }
++
++[dependencies.compat]
++vulkan = "1.4.357.0"
++# VMA 的实现 TU 由包提供（动态解析入口点），见 vma.ixx 里 pVulkanFunctions 的补齐
++vulkan-memory-allocator = "3.4.0"
++
++[targets.vulkan_wrapper]
++kind = "lib"
+diff --git a/src/vk_wrap/objects/physical_device.ixx b/src/vk_wrap/objects/physical_device.ixx
+index fc4848a..4feb3c3 100644
+--- a/src/vk_wrap/objects/physical_device.ixx
++++ b/src/vk_wrap/objects/physical_device.ixx
+@@ -220,7 +220,9 @@ namespace mo_yanxi::vk{
+ 	};
+ }
+ 
+-export
++// Not exported: a specialization of a std template is attached to the GLOBAL
++// module, and `export` on such a declaration is ill-formed (GCC: "explicit
++// specializations are not permitted here"). It stays reachable to importers.
+ template <>
+ struct std::hash<mo_yanxi::vk::queue_family_indices::family_data>{
+ 	constexpr std::size_t operator()(const mo_yanxi::vk::queue_family_indices::family_data& index) const noexcept{
+diff --git a/src/vk_wrap/objects/resources/image_derives.ixx b/src/vk_wrap/objects/resources/image_derives.ixx
+index a297bbe..ccfbe15 100644
+--- a/src/vk_wrap/objects/resources/image_derives.ixx
++++ b/src/vk_wrap/objects/resources/image_derives.ixx
+@@ -32,7 +32,7 @@ template <typename ImageProv>
+ struct combined_image_type{
+ protected:
+ 	ImageProv image{};
+-	image_view image_view{};
++	vk::image_view image_view{};
+ 
+ public:
+ 	[[nodiscard]] combined_image_type() = default;
+@@ -88,7 +88,7 @@ export constexpr std::uint32_t get_recommended_mip_level(const VkExtent2D extent
+ 
+ export
+ struct texture_bitmap_write{
+-	const bitmap& bitmap;
++	const mo_yanxi::bitmap& bitmap;
+ 	math::point2 offset;
+ };
+ 
+diff --git a/src/vk_wrap/objects/sync.ixx b/src/vk_wrap/objects/sync.ixx
+index eb8811a..66f2c4e 100644
+--- a/src/vk_wrap/objects/sync.ixx
++++ b/src/vk_wrap/objects/sync.ixx
+@@ -1,4 +1,4 @@
+-﻿module;
++module;
+ 
+ #include <cassert>
+ #include <vulkan/vulkan.h>
+diff --git a/src/vk_wrap/stack_trace.cpp b/src/vk_wrap/stack_trace.cpp
+index 795c514..8e1967a 100644
+--- a/src/vk_wrap/stack_trace.cpp
++++ b/src/vk_wrap/stack_trace.cpp
+@@ -4,10 +4,14 @@ module;
+ 
+ module mo_yanxi.stack_trace;
+ 
+-#if defined(__cpp_lib_stacktrace)
+-
++// Unconditional: an `import` inside a conditional preprocessor block cannot be
++// resolved by a P1689 dependency scanner (mcpp rejects it outright), and imports
++// belong at the top of the module purview regardless. Importing it when
++// __cpp_lib_stacktrace is absent costs nothing.
+ import mo_yanxi.meta_programming;
+ 
++#if defined(__cpp_lib_stacktrace)
++
+ void mo_yanxi::print_stack_trace(std::ostream& ss, unsigned skip, const std::stacktrace& currentStacktrace){
+ 	std::println(ss, "Stack Trace: ");
+ 
+diff --git a/src/vk_wrap/util/exception.ixx b/src/vk_wrap/util/exception.ixx
+index 99ad0b5..5115ae4 100644
+--- a/src/vk_wrap/util/exception.ixx
++++ b/src/vk_wrap/util/exception.ixx
+@@ -6,44 +6,56 @@ export module mo_yanxi.vk.util:exception;
+ 
+ import std;
+ 
++// These derive from std::runtime_error rather than std::exception.
++//
++// `std::exception(const char*)` is an MSVC extension -- the standard
++// std::exception has only a default constructor, so libstdc++/libc++ reject it.
++// std::runtime_error is the portable base that actually carries a message, and
++// its what() is `noexcept`, which also fixes the "looser exception
++// specification on overriding virtual function" error the old `const char*
++// what() const` overrides produced.
++//
++// Constructing from std::string{msg} rather than msg.data() is not incidental:
++// a string_view is not guaranteed NUL-terminated, so the old code read past the
++// end for any view that was not.
+ namespace mo_yanxi::vk{
+-	export struct vk_error final : std::exception{
++	export struct vk_error final : std::runtime_error{
+ 		[[nodiscard]] vk_error(const VkResult result, const std::string_view msg)
+-			: std::exception(msg.data()), result{result}{
++			: std::runtime_error(std::string{msg}), result{result}{
+ 		}
+ 
+ 		VkResult result{};
+ 
+-		[[nodiscard]] const char* what() const override{
+-			return std::exception::what();
++		[[nodiscard]] const char* what() const noexcept override{
++			return std::runtime_error::what();
+ 		}
+ 	};
+ 
+-	export struct unqualified_error final : std::exception{
+-		[[nodiscard]] unqualified_error() : std::exception("Env/Device Disabled"){
++	export struct unqualified_error final : std::runtime_error{
++		[[nodiscard]] unqualified_error() : std::runtime_error("Env/Device Disabled"){
+ 
+ 		}
+ 
+ 		[[nodiscard]] unqualified_error(const std::string_view msg)
+-			: std::exception(msg.data()){
++			: std::runtime_error(std::string{msg}){
+ 		}
+ 
+-		[[nodiscard]] const char* what() const override{
+-			return std::exception::what();
++		[[nodiscard]] const char* what() const noexcept override{
++			return std::runtime_error::what();
+ 		}
+ 	};
+ 
+-	struct ambiguous_error final : std::exception{
+-		[[nodiscard]] ambiguous_error() : std::exception("Ambiguous Setting"){
++	struct ambiguous_error final : std::runtime_error{
++		[[nodiscard]] ambiguous_error() : std::runtime_error("Ambiguous Setting"){
+ 
+ 		}
+ 
+ 		[[nodiscard]] ambiguous_error(const std::string_view msg)
+-			: std::exception(msg.data()){
++			: std::runtime_error(std::string{msg}){
+ 		}
+ 
+-		[[nodiscard]] const char* what() const override{
+-			return std::exception::what();
++		[[nodiscard]] const char* what() const noexcept override{
++			return std::runtime_error::what();
+ 		}
+ 	};
+ }
+diff --git a/src/vk_wrap/util/validation.ixx b/src/vk_wrap/util/validation.ixx
+index 67febae..a263f27 100644
+--- a/src/vk_wrap/util/validation.ixx
++++ b/src/vk_wrap/util/validation.ixx
+@@ -1,4 +1,4 @@
+-﻿module;
++module;
+ 
+ #include <vulkan/vulkan.h>
+ 
+diff --git a/src/vk_wrap/util/vma.cpp b/src/vk_wrap/util/vma.cpp
+index a3eb313..ba59241 100644
+--- a/src/vk_wrap/util/vma.cpp
++++ b/src/vk_wrap/util/vma.cpp
+@@ -1,7 +1,6 @@
+ module;
+ 
+ 
+-#define VMA_IMPLEMENTATION
+ #include <vk_mem_alloc.h>
+ 
+ module mo_yanxi.vk.util;
+\ No newline at end of file
+diff --git a/src/vk_wrap/util/vma.ixx b/src/vk_wrap/util/vma.ixx
+index 9f3ebf7..6553c5f 100644
+--- a/src/vk_wrap/util/vma.ixx
++++ b/src/vk_wrap/util/vma.ixx
+@@ -196,6 +196,21 @@ public:
+ 	[[nodiscard]] allocator() = default;
+ 
+ 	[[nodiscard]] explicit(false) allocator(const VmaAllocatorCreateInfo& info){
++		// compat.vulkan-memory-allocator builds VMA with VMA_DYNAMIC_VULKAN_FUNCTIONS,
++		// so the package links against the Vulkan headers alone rather than dragging a
++		// loader into everything that allocates memory. The cost is that VMA no longer
++		// resolves entry points by name: it wants these two and fetches the rest itself.
++		// We do link the loader, so the real symbols are here to hand.
++		if(info.pVulkanFunctions == nullptr){
++			static constexpr VmaVulkanFunctions bootstrap{
++				.vkGetInstanceProcAddr = &::vkGetInstanceProcAddr,
++				.vkGetDeviceProcAddr   = &::vkGetDeviceProcAddr,
++			};
++			VmaAllocatorCreateInfo patched = info;
++			patched.pVulkanFunctions = &bootstrap;
++			vmaCreateAllocator(&patched, &handle);
++			return;
++		}
+ 		vmaCreateAllocator(&info, &handle);
+ 	}
+ 

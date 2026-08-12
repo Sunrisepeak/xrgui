@@ -2,9 +2,7 @@ module;
 
 #include <cassert>
 
-#ifndef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
 #include "plf_hive.h"
-#endif
 
 #include <mo_yanxi/adapted_attributes.hpp>
 
@@ -17,10 +15,6 @@ import mo_yanxi.concurrent.mpsc_queue;
 import mo_yanxi.allocator_aware_unique_ptr;
 import mo_yanxi.call_stream;
 import mo_yanxi.referenced_ptr;
-
-#ifdef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
-import <plf_hive.h>;
-#endif
 
 namespace mo_yanxi::gui{
 export
@@ -871,7 +865,9 @@ struct associated_async_sync_task_queue : associated_async_sync_task_queue_base{
 		});
 	}
 
-	using associated_async_sync_task_queue::merge;
+	// The injected-class-name names THIS class, not the base -- GCC:
+	// "is not a base type for type". The base is the _base suffix one.
+	using associated_async_sync_task_queue_base::merge;
 
 };
 
