@@ -1,20 +1,30 @@
-name: Build XRGUI with Preview MSVC
+name: Build XRGUI with MSVC
 
 env:
   PYTHONUTF8: 1
   VULKAN_VER: 1.4.341.1
-  MSVC_VER: 14.52
+  # Pinned to the toolset the runner image ships, not a floating preview.
+  # aka.ms/vs/18/insiders always fetches the newest build, which is what let
+  # MSVC move underneath this workflow between June and August.
+  MSVC_VER: 14.51
 
 on:
   push:
     branches: [ "master" ]
   pull_request:
-    branches: [ "master" ]
+
+# Each run installs the Vulkan SDK and compiles the whole tree; a superseded run
+# is a long slot spent on an answer nobody will read.
+concurrency:
+  group: xmake-windows-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
     # === 关键修改1：切换到预装 VS 2026 的 runner ===
-    runs-on: windows-latest   # ← 原来是 windows-latest
+    # Pinned. windows-latest currently maps to windows-2025-vs2026, but only
+    # currently -- and the toolchain is what this build is sensitive to.
+    runs-on: windows-2025
 
     steps:
       - name: Checkout repository
@@ -90,46 +100,21 @@ jobs:
       # 第二阶段：重度编译环境配置（耗时较长）
       # ==========================================
 
-      - name: Download and Install VS 2026 Insider Build Tools (Preview MSVC ${{ env.MSVC_VER }})
+      - name: Export MSVC ${{ env.MSVC_VER }} environment
         shell: pwsh
         run: |
-          $installerUrl = "https://aka.ms/vs/18/insiders/vs_BuildTools.exe"
-          Write-Host "Downloading VS 2026 Insider Build Tools from: $installerUrl"
-          Invoke-WebRequest -Uri $installerUrl -OutFile "vs_buildtools_insider.exe"
-
-          $installArgs = @(
-            "--quiet", "--wait", "--norestart", "--nocache",
-            "--installPath", "C:\VS2026Insider",
-            "--add", "Microsoft.VisualStudio.Workload.VCTools",           # 基础 C++ 工作负载
-            "--add", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", # Latest（兼容 vcpkg 等）
-            "--add", "Microsoft.VisualStudio.Component.VC.Preview.Tools.x86.x64", # ← 关键：${{ env.MSVC_VER }} Preview
-            "--includeRecommended"
-          )
-
-          Write-Host "Installing VS 2026 Insider + MSVC ${{ env.MSVC_VER }} Preview..."
-          $process = Start-Process -FilePath ".\vs_buildtools_insider.exe" -ArgumentList $installArgs -Wait -PassThru -NoNewWindow
-
-          if ($process.ExitCode -eq 0 -or $process.ExitCode -eq 3010) {
-              Write-Host "Installation completed successfully (MSVC ${{ env.MSVC_VER }} Preview included)."
-          } else {
-              Write-Error "Installation failed with exit code: $($process.ExitCode)"
-              exit 1
-          }
-          
-      - name: Export VS 2026 Insider Environment (MSVC ${{ env.MSVC_VER }} Preview)
-        shell: pwsh
-        run: |
-          # 使用 vswhere 可靠定位 Insider 实例
-          $installPath = & vswhere.exe -latest -prerelease -products * `
+          # The runner image already ships VS 2026 Enterprise with this toolset.
+          # No -prerelease: that is what picked up an Insider install before.
+          $installPath = & vswhere.exe -latest -products * `
             -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
             -property installationPath
 
           if (-not $installPath) {
-              Write-Error "VS 2026 Insider not found!"
+              Write-Error "Visual Studio not found on this image!"
               exit 1
           }
 
-          Write-Host "Found VS 2026 Insider at: $installPath"
+          Write-Host "Using Visual Studio at: $installPath"
           $vcvarsall = Join-Path $installPath "VC\Auxiliary\Build\vcvarsall.bat"
 
           $envLines = cmd /c "call `"$vcvarsall`" x64 -vcvars_ver=${{ env.MSVC_VER }} >nul && set"
@@ -143,7 +128,7 @@ jobs:
                   }
               }
           }
-          Write-Host "MSVC ${{ env.MSVC_VER }} Preview environment exported successfully."
+          Write-Host "MSVC ${{ env.MSVC_VER }} environment exported."
 
       # ==========================================
       # 第三阶段：核心编译与产物上传
