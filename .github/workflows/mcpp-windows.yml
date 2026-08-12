@@ -20,18 +20,23 @@ env:
   VULKAN_VER: 1.4.341.1
   MSVC_VER: 14.52
 
+# Only `push` on master and `pull_request`. Listing the feature branch under
+# push as well made every push with an open PR start the job twice -- once for
+# the branch ref and once for the merge ref -- and the two did not cancel each
+# other because their github.ref differed.
 on:
   push:
-    branches: [ "master", "feat/mcpp-windows" ]
-  pull_request:
     branches: [ "master" ]
+  pull_request:
   workflow_dispatch:
 
-# A push supersedes whatever was already running for the same ref. Each run
-# installs VS 2026 Insider and the Vulkan SDK, so leaving stale runs alive costs
-# real runner time for a result nobody will read.
+# A new push supersedes whatever was already running for the same PR or branch.
+# Each run installs VS 2026 Insider and the Vulkan SDK, so a stale run burns a
+# long slot for a result nobody will read. head_ref is set on pull_request and
+# empty on push, so this keys on the PR when there is one and on the branch
+# otherwise.
 concurrency:
-  group: mcpp-windows-${{ github.ref }}
+  group: mcpp-windows-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 jobs:
