@@ -47,15 +47,22 @@ include_dirs = [
   "mcpp/compat",                             # <nanosvg/nanosvg.h>, see [generated_files]
 ]
 
-# xmake: set_runtimes(is_mode("debug") and "MDd" or "MD") -- the dynamic CRT.
-# I had missed this line, and mcpp's default (self-contained, i.e. /MT on MSVC)
-# does not merely differ from xmake: it left std.ifc built one way and the
-# project's TUs the other, which cl reports as
+# xmake uses the dynamic CRT (set_runtimes "MD"), and "host-coupled" is how
+# that is spelled here -- but it does not work yet. mcpp builds the std module
+# interface with the STATIC runtime regardless of this setting, and the project
+# TUs then get /MD, which cl reports as
 #     warning C5050: _MSVC_MT is defined in module command line and not in
 #                    current command line
-# and then fails for real in corecrt_malloc.h with
+# before failing for real in corecrt_malloc.h with
 #     error C2375: 'free': redefinition; different linkage
-cxx_runtime = "host-coupled"
+# Verified against a cold cache, so it is not a stale artifact: the std.ifc mcpp
+# hands us is simply built /MT.
+#
+# So match std instead of fighting it. "self-contained" is /MT on MSVC and is
+# also mcpp's own default, which puts every package, the std module and this
+# project on one runtime. It differs from xmake in what the artifact promises
+# about the machine that runs it, not in semantics.
+cxx_runtime = "self-contained"
 
 defines = [
   "MO_YANXI_ALLOCATOR_2D_USE_STD_MODULE",
