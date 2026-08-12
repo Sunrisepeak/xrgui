@@ -143,13 +143,17 @@ jobs:
           else { Write-Host "patch already applied, skipping" }
           Pop-Location
 
+      # No restore-keys, deliberately. ~/.mcpp holds compiled artifacts whose
+      # validity depends on the compile flags, and a loose prefix restore served
+      # a std.ifc built for the static CRT to a build that had since moved to
+      # the dynamic one -- which cl reports as C5050 and then fails on for real
+      # in corecrt_malloc.h. A changed manifest has to mean a cold cache.
       - name: mcpp — cache registry and build artifacts
         uses: actions/cache@v4
         with:
           path: |
             ~/.mcpp
-          key: mcpp-win-${{ hashFiles('mcpp.toml', 'mcpp/**/mcpp.toml') }}
-          restore-keys: mcpp-win-
+          key: mcpp-win-${{ hashFiles('mcpp.toml', 'mcpp/**/mcpp.toml', 'build.mcpp') }}
 
       - name: mcpp — build the library and xrgui_hello
         run: mcpp build
