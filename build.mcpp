@@ -213,6 +213,64 @@ int main() {
 
     write_if_changed(out_dir / "assets_summary.h", summary);
 
+    // ---- runtime data next to the executable (xmake's after_build) ----
+    //
+    // xmake copies properties/assets and properties/vk_layer_settings.txt into
+    // the target dir so the built image can find its data. build.mcpp cannot do
+    // that itself: it runs during prepare, and the binary directory is not in
+    // the environment contract -- ${mcpp.bin_dir} exists only as an action
+    // interpolation. So declare it as a `artifact` action, whose inputs are
+    // link outputs and which therefore runs after the link.
+    //
+    // The copy is one command for the whole tree, but every output has to be
+    // named: mcpp fixes the file set during prepare. That is fine here because
+    // the set is small and, importantly, the generated shaders above are
+    // already on disk by this point.
+    const auto assets_src = root / "properties/assets";
+    if (std::filesystem::is_directory(assets_src)) {
+        std::vector<std::filesystem::path> files;
+        for (const auto& e : std::filesystem::recursive_directory_iterator{assets_src}) {
+            if (e.is_regular_file()) files.push_back(e.path());
+        }
+        std::ranges::sort(files);
+
+        mcpp::action a;
+        a.id   = "copy-assets";
+        a.role = "artifact";
+        if (mcpp::target_os() == std::string_view{"windows"}) {
+            a.arg("cmd").arg("/c").arg("xcopy").arg("/E").arg("/I").arg("/Y").arg("/Q")
+             .arg(assets_src.string().c_str())
+             .arg("${mcpp.bin_dir}\\assets\\");
+        } else {
+            a.arg("cp").arg("-r")
+             .arg(assets_src.string().c_str())
+             .arg("${mcpp.bin_dir}/");
+        }
+        for (const auto& f : files) {
+            a.input(f.string().c_str());
+            const auto rel = std::filesystem::relative(f, assets_src).generic_string();
+            a.output(std::format("${{mcpp.bin_dir}}/assets/{}", rel).c_str());
+        }
+        a.submit();
+        std::println("build.mcpp: {} runtime asset(s) will be staged next to the binaries", files.size());
+    }
+
+    const auto vk_settings = root / "properties/vk_layer_settings.txt";
+    if (std::filesystem::exists(vk_settings)) {
+        mcpp::action a;
+        a.id   = "copy-vk-layer-settings";
+        a.role = "artifact";
+        if (mcpp::target_os() == std::string_view{"windows"}) {
+            a.arg("cmd").arg("/c").arg("copy").arg("/Y")
+             .arg(vk_settings.string().c_str()).arg("${mcpp.bin_dir}\\");
+        } else {
+            a.arg("cp").arg(vk_settings.string().c_str()).arg("${mcpp.bin_dir}/");
+        }
+        a.input(vk_settings.string().c_str())
+         .output("${mcpp.bin_dir}/vk_layer_settings.txt")
+         .submit();
+    }
+
     // Private to this package -- consumers of xrgui have no business seeing
     // the generated tree.
     mcpp::include_dir(out_dir.string().c_str());

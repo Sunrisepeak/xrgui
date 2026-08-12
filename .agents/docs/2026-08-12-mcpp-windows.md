@@ -15,6 +15,21 @@ xmake 了，在这里再跑一遍等于每轮多装一次 VS 2026 却得不到�
 
 xmake 本身也不装：它那两个资产任务不过是 Python 脚本的薄包装，本 job 直接调脚本。
 
+### 运行期数据靠 `mcpp::action`（对应 xmake 的 `after_build`）
+
+xmake 在 `after_build` 里把 `properties/assets` 和 `vk_layer_settings.txt` 拷进
+目标目录。`build.mcpp` 自己做不了：它在 prepare 阶段运行，而二进制目录不在环境
+契约里——`${mcpp.bin_dir}` 只作为 **action 的插值**存在。
+
+所以走 `role = "artifact"`：它的输入是链接产物，因此排在链接之后。整棵树一条拷贝
+命令，但每个输出都必须点名（mcpp 在 prepare 时就把文件集定死了）。这里可行是因为
+文件很少，而且上面的着色器生成已经先跑完、产物已在磁盘上。
+
+xmake 那段里另外两项：`add_syslinks` 已落在 `[target.windows.build] ldflags`；
+`set_policy("build.optimization.lto")` 对应 `[profile.release] lto = true`，
+**暂不开启**——预览版 MSVC 加上 C++ 模块，再叠 LTO，在整个构建还没绿过一次之前
+不值得引入这个变量。等绿了再开。
+
 ### 资产生成在 `build.mcpp` 里
 
 xmake 的 `xrgui.gen_icon` / `xrgui.gen_slang` 两个任务不过是 Python 脚本的薄包装，
