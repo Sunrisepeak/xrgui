@@ -39,8 +39,11 @@ sources = [
 
 include_dirs = [
   "external/include",                        # stb_image / beman::inplace_vector
-  "external/stb",
   "external/small_vector/source/include",    # <gch/small_vector.hpp>
+  # xrgui's own sources include <vk_mem_alloc.h> directly. vulkan_wrapper
+  # already publishes this directory, but naming it here too costs nothing and
+  # does not depend on how a path dependency propagates its include dirs.
+  "external/mo_yanxi_vulkan_wrapper/external/VulkanMemoryAllocator/include",
   "mcpp/compat",                             # <nanosvg/nanosvg.h>, see [generated_files]
 ]
 
