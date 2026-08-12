@@ -54,9 +54,20 @@ jobs:
         shell: pwsh
         run: |
           irm https://raw.githubusercontent.com/openxlings/xlings/main/tools/other/quick_install.ps1 | iex
-          # quick_install puts xlings on PATH for the current process only.
-          $xbin = Join-Path $env:USERPROFILE ".xlings\bin"
-          if (Test-Path $xbin) { echo $xbin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append }
+
+          # The installer edits the user profile and tells you to restart the
+          # terminal. GITHUB_PATH only reaches LATER steps, so this step has to
+          # put the directory on its own PATH as well before it can call xlings.
+          # ~/.xlings holds both bin/ and subos/default/bin/; take whichever
+          # actually contains the executable, and export both when both exist.
+          $home_x = Join-Path $env:USERPROFILE ".xlings"
+          $found = Get-ChildItem -Path $home_x -Filter "xlings.exe" -Recurse -ErrorAction SilentlyContinue
+          if (-not $found) { Write-Error "xlings.exe not found under $home_x"; exit 1 }
+          foreach ($d in ($found.Directory.FullName | Select-Object -Unique)) {
+              Write-Host "adding to PATH: $d"
+              $env:PATH = "$d;$env:PATH"
+              echo $d | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          }
           xlings --version
 
       - name: Install node, python, slang and mcpp via xlings
