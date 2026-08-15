@@ -1,12 +1,9 @@
 # Windows / MSVC CI for the mcpp build.
 #
 # Only mcpp: build_and_dispatch.yml already builds this PR with xmake, on the
-# same runner image and from the same checkout, so this job exists to vary the
-# build system and as little else as possible.
-#
-# One thing it cannot hold equal, and the MSVC section below says why at length:
-# xmake compiles with the VS 2026 Insider preview toolset, while mcpp finds its
-# own MSVC and can only find the image's release-channel one.
+# same runner image, from the same checkout and with the same preview MSVC, so
+# this job exists to vary the build system and as little else as possible.
+# Holding the compiler equal takes real work here -- see the MSVC section.
 #
 # xmake is not installed at all: its two asset tasks are thin wrappers around
 # Python scripts, and this job calls those scripts directly.
@@ -21,9 +18,12 @@ name: mcpp (Windows / MSVC)
 env:
   PYTHONUTF8: 1
   VULKAN_VER: 1.4.341.1
-  # Only for the log line that names what the other leg uses -- nothing here
-  # selects a toolset, because nothing here can. See the MSVC section below.
+  # Same two values as build_and_dispatch.yml, and they have to stay the same:
+  # the point of this job is that only the build system differs. 14.52 is not
+  # optional -- see the MSVC section below for what 14.51 does to this codebase.
   MSVC_VER: 14.52
+  MSVC_TOOLSET: 14.52.36629
+  VS_INSIDER_DIR: C:\VS2026Insider
   # Pinned, because mcpp is the thing under test here -- an unpinned install
   # makes this job's result a function of whatever the index served that hour.
   # 2026.8.15.1 is also the floor for this project: before it, mcpp compiled the
@@ -46,7 +46,7 @@ on:
   workflow_dispatch:
 
 # A new push supersedes whatever was already running for the same PR or branch.
-# Each run installs the Vulkan SDK and then compiles the whole tree, so a stale
+# Each run installs VS 2026 Insider and the Vulkan SDK before compiling, so a stale
 # run burns a long slot for a result nobody will read. head_ref is set on
 # pull_request and empty on push, so this keys on the PR when there is one and
 # on the branch otherwise.
@@ -126,45 +126,93 @@ jobs:
 
       # ── MSVC ──────────────────────────────────────────────────────────────
       #
-      # No VS install and no vcvars export, and this time for a reason that was
-      # measured rather than assumed. mcpp finds MSVC itself, and cannot be
-      # pointed anywhere else from here: src/toolchain/msvc.cppm tries
+      # This leg needs the same ${{ env.MSVC_VER }} preview toolset the xmake leg uses, and
+      # it is not a preference: the image's preinstalled 14.51.36231 cannot
+      # compile this codebase at all. It dies at
       #
-      #   vswhere -latest -products * -requires ...VC.Tools.x86.x64
+      #   mo_yanxi_utility/src/utility/math/basic/vector2.ixx(67):
+      #     fatal error C1001: Internal compiler error.
+      #     (compiler file '...\CxxFE\sl\p1\c\template.cpp', line 26415)
+      #     note: IFC import detected.
       #
-      # first, with no -prerelease, so a VS 2026 Insider instance is invisible
-      # to it and the image's release-channel VS 2026 Enterprise wins. The
-      # VSINSTALLDIR / VS*COMNTOOLS fallback that a developer command prompt
-      # would set is only consulted when vswhere finds nothing, so it never runs
-      # here. mcpp then synthesizes its own INCLUDE/LIB from the toolset it
-      # picked, which is what keeps an exported-but-ignored vcvars from turning
-      # into 14.51 cl reading 14.52 headers.
+      # instantiating math::vector2<float>::ceil. Measured on this job, not
+      # inherited from the other one's comments.
       #
-      # A previous revision did install VS 2026 Insider here. It cost ~7 minutes
-      # a run and changed nothing about what compiled: the build log named
-      # Enterprise 14.51.36231 either way.
+      # Getting mcpp onto the preview toolset takes the shadowing step below,
+      # which is a workaround for mcpp and should be deleted the moment mcpp
+      # stops needing it. mcpp discovers MSVC in src/toolchain/msvc.cppm as
       #
-      # So this leg builds with the toolset the image ships and the xmake leg
-      # builds with the preview -- a real difference between the two, and the
-      # one thing about this job that is not "same inputs, different build
-      # system". Closing it takes a one-line change in mcpp (pass -prerelease,
-      # or let an explicit VSINSTALLDIR win), not a change here.
-      - name: Detect the MSVC toolset mcpp will use
+      #   1. vswhere -latest -products * -requires ...VC.Tools.x86.x64
+      #   2. VSINSTALLDIR / VS*COMNTOOLS
+      #   3. the standard Program Files paths
+      #
+      # and step 1 passes no -prerelease, so an Insider instance is invisible to
+      # it and the release-channel Enterprise always wins. Step 2 -- what a
+      # developer command prompt sets, and the one thing a caller can actually
+      # control -- is only reached when step 1 finds nothing. Exporting vcvars
+      # alone therefore changes nothing; that was measured too, at ~7 minutes a
+      # run for a build log that still named 14.51.36231.
+      #
+      # So: install the preview, export it, and take vswhere out of the picture
+      # so mcpp reaches step 2. One line in mcpp (pass -prerelease, or let an
+      # explicit VSINSTALLDIR win) makes all of this unnecessary.
+
+      - name: Download and Install VS 2026 Insider Build Tools (Preview MSVC ${{ env.MSVC_VER }})
         shell: pwsh
         run: |
-          # Same probe mcpp runs, so the answer is the toolset that will compile
-          # -- not a guess about the image. It goes in the cache key below:
-          # ~/.mcpp holds .ifc files, and an .ifc and its consumer have to come
-          # from one cl or the build dies in the ucrt headers.
+          Invoke-WebRequest -Uri "https://aka.ms/vs/18/insiders/vs_BuildTools.exe" -OutFile "vs_buildtools_insider.exe"
+          $installArgs = @(
+            "--quiet", "--wait", "--norestart", "--nocache",
+            "--installPath", "${{ env.VS_INSIDER_DIR }}",
+            "--add", "Microsoft.VisualStudio.Workload.VCTools",
+            "--add", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+            "--add", "Microsoft.VisualStudio.Component.VC.Preview.Tools.x86.x64",
+            "--includeRecommended"
+          )
+          $p = Start-Process -FilePath ".\vs_buildtools_insider.exe" -ArgumentList $installArgs -Wait -PassThru -NoNewWindow
+          if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) {
+              Write-Error "Installation failed with exit code: $($p.ExitCode)"; exit 1
+          }
+
+      - name: Point mcpp at the preview toolset
+        shell: pwsh
+        run: |
+          $vs = "${{ env.VS_INSIDER_DIR }}"
+          $vcvarsall = Join-Path $vs "VC\Auxiliary\Build\vcvarsall.bat"
+          if (-not (Test-Path $vcvarsall)) { Write-Error "no vcvarsall at $vcvarsall"; exit 1 }
+
+          # Straight to the install path -- no vswhere here either, since we
+          # chose where it went.
+          $envLines = cmd /c "call `"$vcvarsall`" x64 -vcvars_ver=${{ env.MSVC_VER }} >nul && set"
+          $got = ($envLines | Select-String '^VCToolsVersion=(.*)$').Matches.Groups[1].Value
+          if (-not $got.StartsWith("${{ env.MSVC_VER }}.")) {
+              Write-Error "vcvars gave VCToolsVersion $got, expected a ${{ env.MSVC_VER }}.* toolset"
+              exit 1
+          }
+          if ($got -ne "${{ env.MSVC_TOOLSET }}") {
+              Write-Host "::warning::MSVC toolset moved: pinned ${{ env.MSVC_TOOLSET }}, installed $got"
+          }
+          foreach ($line in $envLines) {
+              if ($line -match "^(.*?)=(.*)$") {
+                  $key = $matches[1]; $value = $matches[2]
+                  if ($key -notin "PROMPT", "ComSpec") { echo "$key=$value" >> $env:GITHUB_ENV }
+              }
+          }
+
+          # The workaround itself. mcpp looks for vswhere at this literal path
+          # and nowhere else, so moving it aside makes its first probe come up
+          # empty and its VSINSTALLDIR fallback -- just exported above -- decide.
+          # Nothing else in this job runs vswhere.
           $vswhere = "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe"
-          $vs = & $vswhere -latest -products * `
-            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
-            -property installationPath
-          if (-not $vs) { Write-Error "no VS instance with the C++ toolset on this image"; exit 1 }
-          $toolset = (Get-ChildItem "$vs\VC\Tools\MSVC" -Directory | Sort-Object Name -Descending | Select-Object -First 1).Name
-          Write-Host "mcpp will build with: $vs  toolset $toolset"
-          Write-Host "(the xmake leg builds with the ${{ env.MSVC_VER }} Insider preview -- see the comment above)"
-          echo "MCPP_MSVC_TOOLSET=$toolset" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          if (Test-Path $vswhere) {
+              Move-Item $vswhere "$vswhere.disabled" -Force
+              Write-Host "moved vswhere.exe aside so mcpp falls through to VSINSTALLDIR=$vs"
+          } else {
+              Write-Host "::warning::vswhere.exe not at the path mcpp probes; it may have moved, and mcpp may now pick a different instance"
+          }
+
+          echo "MCPP_MSVC_TOOLSET=$got" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "MSVC toolset: $got"
 
       - name: Apply submodule patch
         shell: pwsh
@@ -204,13 +252,19 @@ jobs:
       # true, and entirely beside the point. `why` resolves the manifest's
       # [toolchain] the way the build will, so it is the one that can catch a
       # build about to run on something nobody intended.
-      - name: Report the toolchain mcpp resolved
+      - name: Assert mcpp resolved the preview toolset
         shell: pwsh
         run: |
           $out = (mcpp why toolchain 2>&1 | Out-String)
           Write-Host $out
+          # Worth failing on now that the step above can actually decide the
+          # answer. Falling back to the image's 14.51 does not produce a worse
+          # build, it produces C1001 forty minutes later; better to say so here.
           if ($out -notmatch [regex]::Escape("$env:MCPP_MSVC_TOOLSET")) {
-              Write-Host "::warning::mcpp resolved something other than the detected toolset $env:MCPP_MSVC_TOOLSET -- the cache key may not describe this build"
+              Write-Error ("mcpp did not resolve $env:MCPP_MSVC_TOOLSET. If it picked 14.51, the vswhere " +
+                           "shadowing in `"Point mcpp at the preview toolset`" no longer works -- check " +
+                           "whether mcpp changed how it discovers MSVC.")
+              exit 1
           }
 
       - name: mcpp — build the library and xrgui_hello

@@ -15,40 +15,42 @@ xmake 了，在这里再跑一遍等于每轮多装一次 VS 2026 却得不到�
 
 xmake 本身也不装：它那两个资产任务不过是 Python 脚本的薄包装，本 job 直接调脚本。
 
-### 编译器：mcpp 这条腿钉不到 14.52，这是 mcpp 的限制
+### 编译器：14.52 不是偏好，是硬要求；而让 mcpp 用上它需要一个 workaround
 
-两条腿唯一无法拉齐的地方，值得写清楚，免得下次又有人来回改。
-
-mcpp 解析 `msvc@system` 的顺序（`src/toolchain/msvc.cppm`）是
-**vswhere → `VSINSTALLDIR` / `VS*COMNTOOLS` → `Program Files\...` 标准路径**，
-而它调 vswhere 时是：
+**镜像自带的 14.51.36231 根本编不了本仓**，实测：
 
 ```
-vswhere -latest -products * -requires ...VC.Tools.x86.x64 -property installationPath
+mo_yanxi_utility/src/utility/math/basic/vector2.ixx(67):
+  fatal error C1001: Internal compiler error.
+  (compiler file '...\CxxFE\sl\p1\c\template.cpp', line 26415)
+  note: IFC import detected.
 ```
 
-**没有 `-prerelease`**。于是 Insider 实例对它根本不可见，永远返回镜像自带的
-release 通道 VS 2026 Enterprise；又因为 vswhere 这一步成功了，
-`VSINSTALLDIR` 那条回退**压根不会执行**。也就是说，即使在 developer command
-prompt 里、即使把 vcvars 全量导出，也改不了结果：
+卡在实例化 `math::vector2<float>::ceil`。所以两条腿都必须是 14.52 preview。
 
-```
-Resolved msvc@system → msvc 19.51.36252
-  (C:\Program Files\Microsoft Visual Studio\18\Enterprise\...\14.51.36231\...\cl.exe)
-```
+麻烦在于 **mcpp 不接受外部指定编译器**。它解析 `msvc@system` 的顺序
+（`src/toolchain/msvc.cppm`）是：
 
-曾有一版真的照抄了 `build_and_dispatch.yml` 的 Insider 安装 + vcvars 导出，
-**每轮多花约 7 分钟，而构建日志里的 cl 一个字都没变**。所以现在不装了——
-但理由和更早那一版（「装了也没人读」）不是一回事：那一版是拿 mcpp 的行为去推断
-xmake，而上游绿的 run 里每一条 cl 都是 `C:\VS2026Insider\...\14.52.36510`，
-xmake 用得好好的。
+1. `vswhere -latest -products * -requires ...VC.Tools.x86.x64`
+2. `VSINSTALLDIR` / `VS*COMNTOOLS`
+3. `Program Files\...` 标准路径
 
-顺带一提，导出 vcvars 也不会造成 14.51 的 cl 去读 14.52 的头：mcpp 会**按它选中
-的 toolset 自行合成 `INCLUDE`/`LIB`**（`msvc.cppm` 117 行），不继承环境里的。
+第 1 步**没带 `-prerelease`**，Insider 实例对它不可见，于是永远返回 release 通道的
+VS 2026 Enterprise；而第 2 步——唯一能被调用方控制的那个——**只在第 1 步找不到时才执行**。
+所以光导出 vcvars 完全无效，这一点也是实测的：曾有一版照抄了 Insider 安装 +
+vcvars 导出，**每轮多花约 7 分钟，构建日志里的 cl 一个字都没变**。
 
-要真正拉齐，得改 mcpp——给那次 vswhere 加 `-prerelease`，或者让显式设置的
-`VSINSTALLDIR` 优先。一行的事，但不在本仓。在那之前，本 job 用镜像自带的
-toolset，缓存键里带的也是**探测到的实际 toolset**而不是写死的版本号。
+（顺带：导出 vcvars 也不会造成 14.51 的 cl 去读 14.52 的头。mcpp 会按它自己选中的
+toolset **合成** `INCLUDE`/`LIB`（`msvc.cppm:117`），不继承环境里的。）
+
+所以现在的做法是：装 Insider 到固定路径、直接从该路径导出 vcvars（不经 vswhere，
+因为路径是我们定的），然后**把 vswhere.exe 挪开**，逼 mcpp 落到第 2 步。
+mcpp 只在那一个字面路径找 vswhere，本 job 也没有别处用它。
+
+**这是给 mcpp 打的补丁，不是这个仓库该有的东西。** mcpp 那边改一行——
+给 vswhere 加 `-prerelease`，或让显式设置的 `VSINSTALLDIR` 优先——
+这一步就可以整个删掉。删之前，构建前有一条断言：mcpp 若没解析到 14.52 就立刻失败，
+而不是四十分钟后以 C1001 告终。
 
 ### mcpp 版本必须钉死，且下限是 2026.8.15.1
 

@@ -157,8 +157,9 @@ ldflags  = ["-ladvapi32", "-limm32", "-lole32", "-lshell32", "-luser32"]
 # can steer: mcpp asks vswhere without -prerelease and only falls back to
 # VSINSTALLDIR when vswhere finds nothing, so on a machine with both, the
 # release-channel install wins even from inside a developer command prompt.
-# The xmake build asks vcvars for the 14.52 preview, so the two differ there --
-# see the MSVC section of .github/workflows/mcpp-windows.yml.
+# That matters here because the release-channel toolset on the CI image, 14.51,
+# ICEs on this codebase -- so CI has to arrange for the fallback to be reached.
+# See the MSVC section of .github/workflows/mcpp-windows.yml.
 windows = "msvc@system"
 
 [profile.release]
