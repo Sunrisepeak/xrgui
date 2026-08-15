@@ -57,12 +57,16 @@ void note(std::format_string<Args...> fmt, Args&&... args) {
 }
 
 // Is `tool` on PATH? Asks the shell to resolve the name rather than running the
-// tool with a version flag, because the two questions are not the same one: a
-// tool that is installed and working still fails a `--version` probe if it
-// spells that flag differently or exits non-zero after printing it. CI proved
-// the distinction matters -- the workflow's own `Get-Command slangc` succeeded
-// in an earlier step while this probe reported it missing, and the shader
-// generator was skipped with the message going to a stdout nobody reads.
+// tool with a version flag, because those are not the same question. slangc is
+// the case in point -- it has no --version at all:
+//
+//     1 | --version
+//       | ^^ unknown command-line option '--version'
+//     slangc --version exit=1
+//     where slangc exit=0
+//
+// so a --version probe called an installed, working compiler missing, and the
+// shader generator was skipped: "normalized icons: 40   compiled shaders: 0".
 bool have_tool(std::string_view tool) {
 #ifdef _WIN32
     const auto probe = std::format("where {} >NUL 2>&1", tool);

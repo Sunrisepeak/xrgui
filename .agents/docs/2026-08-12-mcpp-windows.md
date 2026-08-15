@@ -178,7 +178,23 @@ xmake 的 `xrgui.gen_icon` / `xrgui.gen_slang` 两个任务不过是 Python 脚�
 
 生成器失败**只告警不中止**，因为它们的退出码不可信：`svg_normalize.py` 在它的 npx
 子进程崩掉时仍然返回 0。真正的把关是 CI 里的 `Assert generated assets exist`——
-断言产物数量，那是唯一有意义的信号。
+断言产物数量，那是唯一有意义的信号。这条断言确实抓到过东西，见下。
+
+**探测工具要按名字解析，不要问它版本。** 曾用 `<tool> --version` 的退出码判断装没装，
+结果 `slangc` **根本没有 `--version`**：
+
+```
+1 | --version
+  | ^^ unknown command-line option '--version'
+slangc --version exit=1     where slangc exit=0
+```
+
+于是一个装好且能用的编译器被判成缺失，着色器生成被静默跳过，
+表现为 `normalized icons: 40   compiled shaders: 0`。现在用 `where` / `command -v`。
+
+**别指望在正常构建里看到 `build.mcpp` 的输出。** mcpp 把它的 stdout 和 stderr
+**合并捕获**，解析成指令流，只在该程序非零退出或超时时才回显。所以诊断信息写去
+stderr 只是「不污染指令流」，并不等于可见——真正的把关始终是上面那条断言。
 
 （`slang_builder.py` 用的是 Python 3.11+ 自带的 `tomllib`，只在更老版本上才回退到
 `tomli`。xlings 装的是 3.13，所以上游 workflow 里那句 `pip install tomli` 不需要。）
