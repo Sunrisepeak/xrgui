@@ -155,7 +155,8 @@ feature，那样更脆。（这条是查 `build.ninja` 里实际的依赖边确�
 每个输出仍必须点名（mcpp 在 prepare 时就把文件集定死了）。这里可行是因为文件很少，
 而且上面的着色器生成已经先跑完、产物已在磁盘上。
 
-xmake 那段里另外两项：`add_syslinks` 已落在 `[target.windows.build] ldflags`；
+xmake 那段里另外两项：`add_syslinks` 落在 `build.mcpp` 的 `mcpp::link_lib`（见上面
+那节，不能写 ldflags）；
 `set_policy("build.optimization.lto")` 对应 `[profile.release] lto = true`，
 **暂不开启**——预览版 MSVC 加上 C++ 模块，再叠 LTO，在整个构建还没绿过一次之前
 不值得引入这个变量。等绿了再开。
@@ -197,7 +198,7 @@ xmake 的 `xrgui.gen_icon` / `xrgui.gen_slang` 两个任务不过是 Python 脚�
 | `add_requires(...)` | 索引包，一条对一条 |
 | `target("xrgui.example")` 等三个 | `[targets.*]` |
 | `rule("media.svg_to_bin")` + `before_build` | `build.mcpp` |
-| `add_syslinks(...)` | `[target.windows.build] ldflags` |
+| `add_syslinks(...)` | `build.mcpp` 的 `mcpp::link_lib`（**不是** ldflags）|
 
 三个 submodule 各自的 `xmake.lua` 同样逐条转写到 `mcpp/<name>/mcpp.toml`。
 清单放在 `mcpp/` 而不是 submodule 里，因为那是别人的仓库；glob 因此要越界指回
@@ -205,7 +206,7 @@ xmake 的 `xrgui.gen_icon` / `xrgui.gen_slang` 两个任务不过是 Python 脚�
 
 ## 必须改的源码
 
-分两类。**前四处是 mcpp 要的**，后三处**和 mcpp 无关**——是 MSVC 从 14.52.36510
+分两类。**前五处是 mcpp 要的**，后三处**和 mcpp 无关**——是 MSVC 从 14.52.36510
 漂到 14.52.36629 之后，未改动的 master 自己就编不过了（见上面那张表）。
 
 前三处都是同一个原因：**mcpp 的 M1 扫描器禁止条件预处理块里出现 import**，
@@ -232,23 +233,31 @@ xmake 的 `xrgui.gen_icon` / `xrgui.gen_slang` 两个任务不过是 Python 脚�
    `miniaudio.c`，再实例化一次会让每个 `ma_*` 符号出现两遍——而且是**链接期**
    才报，暴露得很晚。xmake 不定义这个宏，其构建逐字节不变。
 
+5. `src/graphic/msdf.{cpp,ixx}` 的 `#define MSDFGEN_USE_CPP11` 加
+   `XRGUI_MSDFGEN_NO_CPP11` 守卫。`compat.msdfgen` 是按 `MSDFGEN_USE_CPP11=OFF`
+   构建的，并**通过每个公开头都会包含的 `msdfgen-config.h` 告知消费者**——这正是
+   那个包让两边对「哪些声明存在」达成一致的机制。自己 `#define` 就单方面破坏了它：
+   重载在我们的 TU 里被声明、在库里却不存在，链接期才以
+   `unresolved external symbol Contour::addEdge(EdgeHolder&&)` 暴露。
+   xrepo 的 msdfgen 是开着这个宏构建的，所以 xmake 保持原样、逐字节不变。
+
 ### 后三处：14.52.36629 收紧了模块边界
 
 **两条腿都需要**，改的也不是逻辑，只是把本来就在用的东西显式写出来。
 旧 MSVC 让名字跨模块边界泄漏，新版不再泄漏，仅此而已。
 
-5. `typesetting.rich_text.argument.ixx` **`import mo_yanxi.math.vector2;`**。
+6. `typesetting.rich_text.argument.ixx` **`import mo_yanxi.math.vector2;`**。
    它用 `math::vec2`，而已有的 import 里没人 re-export 它：`graphic.color`
    re-export 的是 `math.vector4`，而 `vector4` 只是普通 import 了 `mo_yanxi.math`。
    漏了它就是 `error C2039: 'vec2': is not a member of 'mo_yanxi::math'`。
 
-6. `typesetting.segmented_layout.ixx` **`#include <gch/small_vector.hpp>`**。
+7. `typesetting.segmented_layout.ixx` **`#include <gch/small_vector.hpp>`**。
    `gch::small_vector_iterator` 的 `operator-(it, it)` 是靠 ADL 找到的命名空间作用域
    模板；`mo_yanxi.typesetting.rich_text` 只在**全局模块片段**里 include 了
    small_vector，而 purview 从没点名过的声明会被丢弃、不写进 BMI。本 TU 要对这些
    迭代器实例化算法，就得自己看见那个头。
 
-7. `typesetting.rich_text.ixx` 里 `rich_text_fallback_style::operator==`
+8. `typesetting.rich_text.ixx` 里 `rich_text_fallback_style::operator==`
    **从 `= default` 改成写出函数体**，同一个机制的另一面。
 
    它的成员 `features` 是 `gch::small_vector`，而 gch 把容器的 `operator==`

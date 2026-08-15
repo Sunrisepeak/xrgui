@@ -70,6 +70,15 @@ defines = [
   # audio.cpp must not instantiate the implementation a second time. Under xmake
   # the macro is undefined and that file keeps doing it, exactly as before.
   "XRGUI_MINIAUDIO_IMPL_PROVIDED",
+  # compat.msdfgen is built with MSDFGEN_USE_CPP11 off and says so in the
+  # msdfgen-config.h that every one of its public headers includes -- which is
+  # the package's way of keeping both sides agreeing on which declarations
+  # exist. src/graphic/msdf.{cpp,ixx} define the macro themselves, which would
+  # break that agreement in one direction only: the overloads would be declared
+  # for those TUs and absent from the library, surfacing as an unresolved
+  # Contour::addEdge(EdgeHolder&&) at link time. xrepo's msdfgen does build with
+  # it, so xmake keeps the define and is unchanged.
+  "XRGUI_MSDFGEN_NO_CPP11",
 ]
 
 # compat.nanosvg follows upstream's layout, where the headers sit in src/ and are

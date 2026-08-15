@@ -313,15 +313,31 @@ int main() {
             mcpp::link_lib(lib);
         }
 
-        // compat.vulkan carries an import library -- symbol stubs only, since
-        // vulkan-1.dll ships with the GPU driver -- under <pkg>/lib.
+        // vulkan-1: an import library of symbol stubs, since vulkan-1.dll ships
+        // with the GPU driver. compat.vulkan carries one under <pkg>/lib, and
+        // the Vulkan SDK -- which is what the xmake build links against, via
+        // $VULKAN_SDK/lib in mo_yanxi_vulkan_wrapper's xmake.lua -- carries the
+        // same thing. Take whichever is actually on disk.
+        //
+        // link_lib is called either way. Naming a library that cannot be found
+        // fails the link with "cannot open input file 'vulkan-1.lib'", which
+        // says what is wrong; staying silent instead produces a hundred
+        // unresolved vk* symbols that do not.
+        std::vector<std::filesystem::path> vk_dirs;
         if (const char* dir = mcpp::dep_dir("compat.vulkan"); dir && *dir) {
-            mcpp::link_search((std::filesystem::path{dir} / "lib").string().c_str());
-            mcpp::link_lib("vulkan-1");
-        } else {
-            std::println("build.mcpp: WARNING: compat.vulkan install dir is unknown, "
-                         "so vulkan-1 will not be linked");
+            vk_dirs.emplace_back(std::filesystem::path{dir} / "lib");
         }
+        if (const char* sdk = std::getenv("VULKAN_SDK"); sdk && *sdk) {
+            vk_dirs.emplace_back(std::filesystem::path{sdk} / "Lib");
+            vk_dirs.emplace_back(std::filesystem::path{sdk} / "lib");
+        }
+        for (const auto& dir : vk_dirs) {
+            if (std::filesystem::exists(dir / "vulkan-1.lib")) {
+                mcpp::link_search(dir.string().c_str());
+                break;
+            }
+        }
+        mcpp::link_lib("vulkan-1");
     }
 
     // Private to this package -- consumers of xrgui have no business seeing
