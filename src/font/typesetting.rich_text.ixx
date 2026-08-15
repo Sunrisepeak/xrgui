@@ -67,27 +67,32 @@ struct rich_text_fallback_style {
 	bool enables_bold{false};
 	rich_text_token::wrap_frame_type wrap_frame_type{rich_text_token::wrap_frame_type::none};
 
-	// Written out rather than `= default`. A defaulted comparison is synthesized
-	// where it is odr-used -- in every importer that compares two of these, and
-	// transitively every one that compares two layout_configs -- and comparing
-	// `features` there needs gch's operator==, which gch declares as a free
-	// function template rather than a hidden friend. That leaves it not
-	// decl-reachable from this class, so it is discarded along with the rest of
-	// the global module fragment, and the importer resolves the comparison to
-	// small_vector's private allocator base instead: C2243, reported against
-	// ui.util.ixx where try_modify is defined rather than against the file that
-	// would have to be changed. MSVC 14.52 stopped leaking the declaration that
-	// used to paper over this.
+	// Written out rather than `= default`, and comparing `features` through its
+	// data pointer rather than through itself. Both halves are about the same
+	// thing: nothing outside this file can see <gch/small_vector.hpp>.
 	//
-	// A body spelled here is a non-template function, so its names bind at this
-	// point of definition -- inside the module that includes the header --
-	// and importers have nothing left to look up.
+	// It is included in the global module fragment above, but a declaration the
+	// purview never names is discarded rather than written into the BMI, and gch
+	// spells both the container's operator== and its iterator's operator-(a, b)
+	// as free function templates rather than hidden friends. So an importer that
+	// compares two of these -- or two layout_configs, which hold one -- has
+	// neither. A defaulted operator== would be synthesized there and fail; so
+	// would `lhs.features == rhs.features`, because gch::operator== is itself a
+	// template and instantiates where it is called, taking std::equal and its
+	// need for operator-(a, b) with it. MSVC 14.52 stopped leaking the
+	// declarations that used to make both work by accident, and reports the
+	// wreckage against <xutility> and ui.util.ixx rather than against anything
+	// a reader would think to look at.
+	//
+	// const hb_feature_t* has none of that problem, and the two spellings mean
+	// the same thing.
 	[[nodiscard]] constexpr friend bool operator==(
 		const rich_text_fallback_style& lhs, const rich_text_fallback_style& rhs) noexcept{
 		return lhs.offset == rhs.offset
 			&& lhs.color == rhs.color
 			&& lhs.family == rhs.family
-			&& lhs.features == rhs.features
+			&& std::equal(lhs.features.data(), lhs.features.data() + lhs.features.size(),
+			              rhs.features.data(), rhs.features.data() + rhs.features.size())
 			&& lhs.enables_underline == rhs.enables_underline
 			&& lhs.enables_italic == rhs.enables_italic
 			&& lhs.enables_bold == rhs.enables_bold

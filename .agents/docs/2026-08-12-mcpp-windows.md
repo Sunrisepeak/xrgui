@@ -233,9 +233,16 @@ xmake 的 `xrgui.gen_icon` / `xrgui.gen_slang` 两个任务不过是 Python 脚�
    `ui.util.ixx:140`（`try_modify`），而实例化点在 `text_edit.ixx` / `label.ixx`
    /……——每加一个比较 `layout_config` 的地方就多一处。
 
-   所以不在导入方逐个补 `#include`（那是打地鼠），而是在定义处根治：
-   **写出函数体后它就是个非模板函数，体内的非依赖名在定义点绑定**，
-   而定义点正在那个 include 了 small_vector 的模块里，导入方于是无需再查找。
+   所以不在导入方逐个补 `#include`（那是打地鼠：修好 `text_edit.ixx`，下一轮就轮到
+   `label.ixx`）。但**只写出函数体还不够**——`lhs.features == rhs.features` 调的
+   `gch::operator==` **自己也是函数模板**，照样在导入方实例化，把 `std::equal`
+   和它对 `operator-(a, b)` 的需求一起带过去；而那个 `operator-` 是 gch 的自由函数
+   模板，同样不在 BMI 里。于是错误换了个样子重来一遍，这次是一大片 `<xutility>`
+   内部的 C2794 / C3376 / C2062。
+
+   真正的根治是**连 gch 的迭代器一起绕开**：按 `data()` / `size()` 比较，
+   参与运算的是 `const hb_feature_t*`，没有任何东西需要从 BMI 里找。
+   语义完全一样。
 
 ## 两处接口差异
 
