@@ -15,36 +15,63 @@ xmake 了，在这里再跑一遍等于每轮多装一次 VS 2026 却得不到�
 
 xmake 本身也不装：它那两个资产任务不过是 Python 脚本的薄包装，本 job 直接调脚本。
 
-### 编译器必须显式导出，不能靠 mcpp 自己找
+### 编译器：mcpp 这条腿钉不到 14.52，这是 mcpp 的限制
 
-mcpp 解析 `msvc@system` 的顺序是 **vswhere → `VSINSTALLDIR` / `VS*COMNTOOLS`
-→ `Program Files\Microsoft Visual Studio\<year>\<edition>` 标准路径**。
-runner 镜像自带 VS 2026 Enterprise，所以**不导出 vcvars 就会静默选中它**：
+两条腿唯一无法拉齐的地方，值得写清楚，免得下次又有人来回改。
+
+mcpp 解析 `msvc@system` 的顺序（`src/toolchain/msvc.cppm`）是
+**vswhere → `VSINSTALLDIR` / `VS*COMNTOOLS` → `Program Files\...` 标准路径**，
+而它调 vswhere 时是：
+
+```
+vswhere -latest -products * -requires ...VC.Tools.x86.x64 -property installationPath
+```
+
+**没有 `-prerelease`**。于是 Insider 实例对它根本不可见，永远返回镜像自带的
+release 通道 VS 2026 Enterprise；又因为 vswhere 这一步成功了，
+`VSINSTALLDIR` 那条回退**压根不会执行**。也就是说，即使在 developer command
+prompt 里、即使把 vcvars 全量导出，也改不了结果：
 
 ```
 Resolved msvc@system → msvc 19.51.36252
   (C:\Program Files\Microsoft Visual Studio\18\Enterprise\...\14.51.36231\...\cl.exe)
 ```
 
-而 xmake 那条腿用的是 Insider 的 14.52。两条腿编译器不同，对比就没有意义了；
-何况 14.51 在本仓直接 ICE（`vector2.ixx:67` 的 C1001）。所以本 job 必须照抄
-`build_and_dispatch.yml` 的 Insider 安装 + vcvars 导出两步，并在构建前断言
-mcpp 没有退回 14.51。
+曾有一版真的照抄了 `build_and_dispatch.yml` 的 Insider 安装 + vcvars 导出，
+**每轮多花约 7 分钟，而构建日志里的 cl 一个字都没变**。所以现在不装了——
+但理由和更早那一版（「装了也没人读」）不是一回事：那一版是拿 mcpp 的行为去推断
+xmake，而上游绿的 run 里每一条 cl 都是 `C:\VS2026Insider\...\14.52.36510`，
+xmake 用得好好的。
 
-曾有一版以「装了也没人读」为由删掉了 Insider 安装。上游那次绿的 run 直接证伪：
-里面每一条 cl 都是 `C:\VS2026Insider\...\14.52.36510\...\cl.exe`。
+顺带一提，导出 vcvars 也不会造成 14.51 的 cl 去读 14.52 的头：mcpp 会**按它选中
+的 toolset 自行合成 `INCLUDE`/`LIB`**（`msvc.cppm` 117 行），不继承环境里的。
 
-### `~/.mcpp` 缓存键必须带编译器版本
+要真正拉齐，得改 mcpp——给那次 vswhere 加 `-prerelease`，或者让显式设置的
+`VSINSTALLDIR` 优先。一行的事，但不在本仓。在那之前，本 job 用镜像自带的
+toolset，缓存键里带的也是**探测到的实际 toolset**而不是写死的版本号。
 
-`~/.mcpp` 里放的是 `.ifc`，**`.ifc` 和消费它的 TU 必须出自同一个 cl**。
-缓存键只按 manifest 哈希时，跨编译器命中会先报一串
+### mcpp 版本必须钉死，且下限是 2026.8.15.1
+
+这条曾经伪装成「缓存问题」，查了很久。症状是一串
 
 ```
 warning C5050: _MSVC_MT is defined in module command line and not in current command line
 ```
 
-再在 `corecrt_malloc.h` 上以 `error C2375: 'free': redefinition; different linkage`
-真正炸掉。所以键里加上 vcvars 导出的 `VCToolsVersion`。
+然后在 `corecrt_malloc.h` 上以
+`error C2375: 'free': redefinition; different linkage` 真正炸掉。
+
+真因是 **mcpp 编 std 模块时一个 runtime flag 都没传**，cl 于是按自己的默认取
+`/MT`，而工程的 TU 拿到的是 `/MD`——即 mcpp#422，修复落在
+**2026.8.15.1**（`src/toolchain/dialect.cppm` 的 `msvc_crt_flag`）。
+
+而 CI 里那句不带版本的 `xlings install mcpp` **装的是 2026.8.11.3**，差一点，
+于是冷缓存下依然复现。所以现在 `xlings install mcpp@<ver>` + `xlings use` +
+校验 `mcpp --version`——mcpp 本身就是这个 job 要测的东西，不该由「那一小时索引
+给了什么」决定。
+
+缓存键里同时带 mcpp 版本和**探测到的 MSVC toolset**：`~/.mcpp` 里放的是 `.ifc`，
+而 `.ifc` 和消费它的 TU 必须出自同一个 cl。
 
 ### `cxx_runtime` 在 MSVC 上只有一个可选项
 
@@ -56,9 +83,9 @@ cxx_runtime = "self-contained" is not implemented for the MSVC runtime yet
 ```
 
 也就是 MSVC 上写什么都会落到 `host-coupled`（`/MD`）。曾有一版写
-`self-contained` 想去迁就一个被 cl 报成 `/MT` 的 std 模块——那个设置是空操作，
-真正的错配是上面那条跨编译器缓存。现在直接写 `host-coupled`，正是 xmake
-`set_runtimes("MD")` 要的。
+`self-contained` 想去迁就那个被 cl 报成 `/MT` 的 std 模块——那个设置是空操作
+（写什么都退回 `/MD`），而真因是上面那条 mcpp 缺陷。现在直接写 `host-coupled`，
+正是 xmake `set_runtimes("MD")` 要的。
 
 ### 上游那次绿和今天不是同一个编译器
 
@@ -191,13 +218,22 @@ xmake 的 `xrgui.gen_icon` / `xrgui.gen_slang` 两个任务不过是 Python 脚�
    small_vector，而 purview 从没点名过的声明会被丢弃、不写进 BMI。本 TU 要对这些
    迭代器实例化算法，就得自己看见那个头。
 
-7. `gui/ext/elements/text_edit.ixx` **`#include <gch/small_vector.hpp>`**，同一个
-   机制的另一面。这里比较两个 `layout_config`，它 defaulted 的 `operator==`
-   一路走到 `rich_text_fallback_style::features`（一个 `gch::small_vector`）。
-   gch 把容器的 `operator==` 写成**自由函数模板而非 hidden friend**，所以它不是
-   从导出类 decl-reachable 的，同样被丢弃。找不到它时重载决议会去够 small_vector
-   的**私有 allocator 基类**，cl 就在模板**定义处** `ui.util.ixx:140` 报
-   `error C2243`——报错位置和该改的文件不是一个，这是这条最难查的地方。
+7. `typesetting.rich_text.ixx` 里 `rich_text_fallback_style::operator==`
+   **从 `= default` 改成写出函数体**，同一个机制的另一面。
+
+   它的成员 `features` 是 `gch::small_vector`，而 gch 把容器的 `operator==`
+   写成**自由函数模板而非 hidden friend**——于是它不是从导出类 decl-reachable 的，
+   同样被丢弃。**defaulted 的比较是在 odr-use 处合成的**，也就是在每一个比较
+   `layout_config` 的导入方里；那里找不到 gch 的 `operator==`，重载决议就去够
+   small_vector 的**私有 allocator 基类**，cl 报 `error C2243`。
+
+   这条最难查的地方在于**报错位置和该改的文件不是一个**：cl 指向模板定义处
+   `ui.util.ixx:140`（`try_modify`），而实例化点在 `text_edit.ixx` / `label.ixx`
+   /……——每加一个比较 `layout_config` 的地方就多一处。
+
+   所以不在导入方逐个补 `#include`（那是打地鼠），而是在定义处根治：
+   **写出函数体后它就是个非模板函数，体内的非依赖名在定义点绑定**，
+   而定义点正在那个 include 了 small_vector 的模块里，导入方于是无需再查找。
 
 ## 两处接口差异
 

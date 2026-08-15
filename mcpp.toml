@@ -151,8 +151,14 @@ ldflags  = ["-ladvapi32", "-limm32", "-lole32", "-lshell32", "-luser32"]
 
 [toolchain]
 # This project is MSVC-first and upstream's MSVC CI is green; mcpp has no reason
-# to put a different front end in front of it. msvc@system picks up whatever
-# VS/BuildTools the environment already exported (CI exports 14.52 preview).
+# to put a different front end in front of it.
+#
+# @system means whichever VS mcpp discovers, and that is not something this file
+# can steer: mcpp asks vswhere without -prerelease and only falls back to
+# VSINSTALLDIR when vswhere finds nothing, so on a machine with both, the
+# release-channel install wins even from inside a developer command prompt.
+# The xmake build asks vcvars for the 14.52 preview, so the two differ there --
+# see the MSVC section of .github/workflows/mcpp-windows.yml.
 windows = "msvc@system"
 
 [profile.release]

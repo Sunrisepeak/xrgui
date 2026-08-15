@@ -34,7 +34,7 @@
 // normal state of a fresh checkout: properties/assets_raw/gen/ is produced by
 // `xmake xrgui.gen_icon` and is not committed. gui.assets.cpp only needs the
 // header to EXIST; an empty one compiles, which is what lets the tree build
-// without Python/Node/slangc. See .agents/docs/2026-08-12-mcpp-adaptation-design.md §8.
+// without Python/Node/slangc. See .agents/docs/2026-08-12-mcpp-windows.md.
 import mcpp;
 import std;
 

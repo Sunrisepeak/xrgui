@@ -67,7 +67,32 @@ struct rich_text_fallback_style {
 	bool enables_bold{false};
 	rich_text_token::wrap_frame_type wrap_frame_type{rich_text_token::wrap_frame_type::none};
 
-	constexpr friend bool operator==(const rich_text_fallback_style& lhs, const rich_text_fallback_style& rhs) noexcept = default;
+	// Written out rather than `= default`. A defaulted comparison is synthesized
+	// where it is odr-used -- in every importer that compares two of these, and
+	// transitively every one that compares two layout_configs -- and comparing
+	// `features` there needs gch's operator==, which gch declares as a free
+	// function template rather than a hidden friend. That leaves it not
+	// decl-reachable from this class, so it is discarded along with the rest of
+	// the global module fragment, and the importer resolves the comparison to
+	// small_vector's private allocator base instead: C2243, reported against
+	// ui.util.ixx where try_modify is defined rather than against the file that
+	// would have to be changed. MSVC 14.52 stopped leaking the declaration that
+	// used to paper over this.
+	//
+	// A body spelled here is a non-template function, so its names bind at this
+	// point of definition -- inside the module that includes the header --
+	// and importers have nothing left to look up.
+	[[nodiscard]] constexpr friend bool operator==(
+		const rich_text_fallback_style& lhs, const rich_text_fallback_style& rhs) noexcept{
+		return lhs.offset == rhs.offset
+			&& lhs.color == rhs.color
+			&& lhs.family == rhs.family
+			&& lhs.features == rhs.features
+			&& lhs.enables_underline == rhs.enables_underline
+			&& lhs.enables_italic == rhs.enables_italic
+			&& lhs.enables_bold == rhs.enables_bold
+			&& lhs.wrap_frame_type == rhs.wrap_frame_type;
+	}
 
 
 	// constexpr bool operator==(const rich_text_fallback_style&) const noexcept = default;
