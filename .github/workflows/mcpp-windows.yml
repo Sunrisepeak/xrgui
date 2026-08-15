@@ -117,6 +117,15 @@ jobs:
               Write-Error "expected mcpp ${{ env.MCPP_VER }}, got: $v"; exit 1
           }
 
+          # build.mcpp decides whether to run the shader generator by probing
+          # for slangc, and a probe that disagrees with reality costs a silent
+          # "compiled shaders: 0" much later. Record what each form of the
+          # question answers here, where it is cheap to read.
+          & slangc --version 2>&1 | Out-Host
+          Write-Host "slangc --version exit=$LASTEXITCODE"
+          & where.exe slangc 2>&1 | Out-Host
+          Write-Host "where slangc exit=$LASTEXITCODE"
+
       - name: Install Vulkan SDK
         run: |
           Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/${{ env.VULKAN_VER }}/windows/vulkansdk-windows-X64-${{ env.VULKAN_VER }}.exe" -OutFile VulkanSDK.exe

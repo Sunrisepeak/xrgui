@@ -40,13 +40,34 @@ import std;
 
 namespace {
 
-// Is `tool` callable? Runs `tool --version` with output discarded. Cheap enough
-// to do twice, and far more reliable than guessing at install locations.
+// Diagnostics go to stderr rather than stdout, because stdout is this program's
+// directive stream and a stray line there is at best ignored.
+//
+// Do not expect to SEE these during a healthy build. mcpp captures stdout and
+// stderr merged, parses the result for directives, and echoes it only when this
+// program exits non-zero or times out. So a skipped generator explains itself
+// only in the run where something else already went wrong -- which is why the
+// real gate is CI's "Assert generated assets exist", asserting on outputs.
+//
+// std::cerr and not stderr: `stderr` is a macro from <cstdio>, and macros do
+// not come through `import std`.
+template <typename... Args>
+void note(std::format_string<Args...> fmt, Args&&... args) {
+    std::println(std::cerr, "build.mcpp: {}", std::format(fmt, std::forward<Args>(args)...));
+}
+
+// Is `tool` on PATH? Asks the shell to resolve the name rather than running the
+// tool with a version flag, because the two questions are not the same one: a
+// tool that is installed and working still fails a `--version` probe if it
+// spells that flag differently or exits non-zero after printing it. CI proved
+// the distinction matters -- the workflow's own `Get-Command slangc` succeeded
+// in an earlier step while this probe reported it missing, and the shader
+// generator was skipped with the message going to a stdout nobody reads.
 bool have_tool(std::string_view tool) {
 #ifdef _WIN32
-    const auto probe = std::format("{} --version >NUL 2>&1", tool);
+    const auto probe = std::format("where {} >NUL 2>&1", tool);
 #else
-    const auto probe = std::format("{} --version >/dev/null 2>&1", tool);
+    const auto probe = std::format("command -v {} >/dev/null 2>&1", tool);
 #endif
     return std::system(probe.c_str()) == 0;
 }
@@ -59,9 +80,9 @@ bool have_tool(std::string_view tool) {
 // even when the npx child crashes. CI asserts on the OUTPUTS instead, which is
 // the only signal that actually means anything here.
 void run_generator(std::string_view what, const std::string& cmd) {
-    std::println("build.mcpp: {} ...", what);
+    note("{} ...", what);
     if (const int rc = std::system(cmd.c_str()); rc != 0) {
-        std::println("build.mcpp: WARNING: {} exited {}\n  {}", what, rc, cmd);
+        note("WARNING: {} exited {}\n  {}", what, rc, cmd);
     }
 }
 
@@ -142,7 +163,7 @@ int main() {
             run_generator("normalizing icons", cmd);
         }
     } else if (!have_python) {
-        std::println("build.mcpp: python not found, skipping icon normalization");
+        note("python not found, skipping icon normalization");
     }
 
     const auto shader_cfg = root / "properties/assets_raw/shader/config.toml";
@@ -157,7 +178,7 @@ int main() {
             run_generator("compiling slang shaders", cmd);
         }
     } else if (std::filesystem::exists(shader_cfg)) {
-        std::println("build.mcpp: python and/or slangc not found, skipping shader compilation");
+        note("python and/or slangc not found, skipping shader compilation");
     }
 
     mcpp::rerun_if_changed_glob("properties/assets_raw/icons/**/*.svg");
@@ -188,7 +209,7 @@ int main() {
         const auto dst_time = std::filesystem::last_write_time(header_abs, ec);
         if (ec || !std::filesystem::exists(header_abs) || dst_time < src_time) {
             if (!write_bin2c(svg, header_abs)) {
-                std::println("build.mcpp: cannot convert {}", svg.string());
+                note("cannot convert {}", svg.string());
                 return 1;
             }
         }
@@ -281,8 +302,8 @@ int main() {
              .output("${mcpp.bin_dir}/vk_layer_settings.txt");
         }
         a.submit();
-        std::println("build.mcpp: staging {} runtime file(s) beside the binaries",
-                     asset_files.size() + (have_vk ? 1u : 0u));
+        note("staging {} runtime file(s) beside the binaries",
+             asset_files.size() + (have_vk ? 1u : 0u));
     }
 
     // ---- Windows link libraries -------------------------------------------
@@ -349,6 +370,6 @@ int main() {
     // would not catch it.
     mcpp::rerun_if_changed_glob("properties/assets_raw/gen/**/*.svg");
 
-    std::println("build.mcpp: {} svg asset(s) -> {}", svgs.size(), out_dir.string());
+    note("{} svg asset(s) -> {}", svgs.size(), out_dir.string());
     return 0;
 }
