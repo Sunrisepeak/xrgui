@@ -103,6 +103,36 @@ LNK4044: unrecognized option '/luser32'; ignored
 （vulkan 的目录用 `mcpp::dep_dir("compat.vulkan")` 拿）。**这是在替包做事**，
 等索引包改成两种链接器都能消费的形式后就该删掉。
 
+### submodule 里的 UTF-8 BOM 会让 mcpp 认不出模块声明
+
+症状极具误导性——报在 MSVC 头文件式的错误上，而且**看起来是偶发的**：
+
+```
+array_queue.ixx(191): error C3474: could not open output file '/interface'
+```
+
+实际的命令行是 `... /ifcOutput  /interface /TP ...`：**`/ifcOutput` 后面是空的**，
+于是 cl 把下一个 token `/interface` 当成了输出文件名。
+
+链条是：mcpp 的扫描器逐行读模块声明，而**它的源码里没有任何地方处理 BOM**。
+文件若以 `EF BB BF` 紧跟 `export module X;` 开头，扫描器就认为它不提供模块
+（`cu.providesModule` 为空），于是编译边拿不到 `bmi_out`；但 MSVC 的 ninja 规则
+仍然无条件发 `/ifcOutput $bmi_out`，空值就这么漏了出去。
+
+「偶发」的错觉来自 submodule 里 BOM 分两类：
+
+| BOM 后面是 | 结果 |
+|---|---|
+| `module;`（全局模块片段行） | **没事**——`export module` 在后面的行上 |
+| `export module X;` | **中招**——BOM 贴在声明行上 |
+
+8 个带 BOM 的文件里只有 2 个属于后者（`array_queue.ixx`、`array_stack.ixx`），
+它们又分布在不同的 feature 构建里，所以每轮挂的步骤都不一样。
+
+CI 在打完 patch 后统一剥掉 submodule 里 `.ixx`/`.cppm` 的 BOM。剥掉是安全的：
+编译行上有 `/utf-8`，没有谁靠 BOM 推断编码。**不做成 patch 文件**，因为一个内容
+只有三个不可见字节的 patch 没法审。
+
 ### `cxx_runtime` 在 MSVC 上只有一个可选项
 
 mcpp 自己会说：

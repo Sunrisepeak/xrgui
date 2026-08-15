@@ -236,6 +236,38 @@ jobs:
           else { Write-Host "patch already applied, skipping" }
           Pop-Location
 
+      - name: Strip UTF-8 BOMs from submodule module interfaces
+        shell: pwsh
+        run: |
+          # mcpp's scanner reads module declarations line by line and does not
+          # skip a byte-order mark -- nothing in its source mentions one. A file
+          # that opens with EF BB BF followed immediately by `export module X;`
+          # therefore provides no module as far as mcpp is concerned, so the
+          # compile edge gets no $bmi_out, and the MSVC rule still emits
+          # `/ifcOutput $bmi_out`. cl then reads the next token as the filename:
+          #
+          #     array_queue.ixx(191): error C3474: could not open output file '/interface'
+          #
+          # Only files whose FIRST line is the module declaration are affected.
+          # The submodules also carry BOMs on files that open with `module;`,
+          # and those are fine -- their `export module` sits on a later line.
+          # That is what made this look intermittent rather than deterministic.
+          #
+          # Stripping is safe: /utf-8 is on the compile line, so nothing infers
+          # the encoding from a BOM. Not a patch file, because a patch whose
+          # only content is three invisible bytes is unreviewable.
+          $bom = [char]0xFEFF
+          $n = 0
+          Get-ChildItem external -Recurse -Include *.ixx,*.cppm -ErrorAction SilentlyContinue | ForEach-Object {
+              $raw = [System.IO.File]::ReadAllBytes($_.FullName)
+              if ($raw.Length -ge 3 -and $raw[0] -eq 0xEF -and $raw[1] -eq 0xBB -and $raw[2] -eq 0xBF) {
+                  [System.IO.File]::WriteAllBytes($_.FullName, $raw[3..($raw.Length - 1)])
+                  Write-Host "stripped BOM: $($_.FullName)"
+                  $n++
+              }
+          }
+          Write-Host "BOMs stripped: $n"
+
       # No restore-keys, deliberately. ~/.mcpp holds compiled artifacts whose
       # validity depends on the compile flags, and a loose prefix restore served
       # a std.ifc built for the static CRT to a build that had since moved to
