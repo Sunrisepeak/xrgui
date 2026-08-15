@@ -536,9 +536,17 @@ private:
 		}
 
 		feature_stack_.clear();
-		feature_stack_ = {
-				config_.rich_text_fallback_style.features.begin(), config_.rich_text_fallback_style.features.end()
-			};
+		// Filled from the container's data pointer rather than its iterators.
+		// This is a member of a class template, so it instantiates in whichever
+		// module imports it -- and gch::small_vector_iterator's operator-(a, b),
+		// which vector's range constructor needs to size the allocation, is a
+		// free function template that no importer can see: gch's header is in a
+		// global module fragment, and what the purview never names is discarded
+		// rather than written into the BMI. Same reason, and same shape, as
+		// rich_text_fallback_style::operator==.
+		const auto& fallback_features = config_.rich_text_fallback_style.features;
+		feature_stack_.assign(fallback_features.data(),
+		                      fallback_features.data() + fallback_features.size());
 		feature_stack_.reserve(8);
 
 		if(config_.direction != layout_direction::deduced){

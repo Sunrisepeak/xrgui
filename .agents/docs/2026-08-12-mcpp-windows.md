@@ -244,6 +244,16 @@ xmake 的 `xrgui.gen_icon` / `xrgui.gen_slang` 两个任务不过是 Python 脚�
    参与运算的是 `const hb_feature_t*`，没有任何东西需要从 BMI 里找。
    语义完全一样。
 
+   同一条规则还命中了第二处：`typesetting.ixx` 里
+   `feature_stack_ = { features.begin(), features.end() }`——
+   `std::vector` 的范围构造要靠 `operator-(a, b)` 算容量，而这是**类模板的成员**，
+   同样在导入方实例化。也改成 `assign(data(), data() + size())`。
+
+   **判据**：gch 容器的迭代器只要出现在「会在别的模块里实例化」的代码里
+   （类模板成员、函数模板、BMI 里的 inline 体调用的模板），就会中招。
+   本仓其余 `small_vector` 都是非模板类的私有成员或 `.cpp` 里的局部变量，
+   在自己的 TU 里用完，所以没事。
+
 ## 两处接口差异
 
 **nanosvg**：本仓写的是 `<nanosvg/nanosvg.h>`，因为 xrepo 把头文件装得比上游深一层。
