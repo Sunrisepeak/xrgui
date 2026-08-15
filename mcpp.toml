@@ -47,22 +47,20 @@ include_dirs = [
   "mcpp/compat",                             # <nanosvg/nanosvg.h>, see [generated_files]
 ]
 
-# xmake uses the dynamic CRT (set_runtimes "MD"), and "host-coupled" is how
-# that is spelled here -- but it does not work yet. mcpp builds the std module
-# interface with the STATIC runtime regardless of this setting, and the project
-# TUs then get /MD, which cl reports as
-#     warning C5050: _MSVC_MT is defined in module command line and not in
-#                    current command line
-# before failing for real in corecrt_malloc.h with
-#     error C2375: 'free': redefinition; different linkage
-# Verified against a cold cache, so it is not a stale artifact: the std.ifc mcpp
-# hands us is simply built /MT.
+# xmake uses the dynamic CRT (set_runtimes "MD"); "host-coupled" is how that is
+# spelled here, and on MSVC it is the only thing this setting can mean today --
+# mcpp says so itself when asked for anything else:
 #
-# So match std instead of fighting it. "self-contained" is /MT on MSVC and is
-# also mcpp's own default, which puts every package, the std module and this
-# project on one runtime. It differs from xmake in what the artifact promises
-# about the machine that runs it, not in semantics.
-cxx_runtime = "self-contained"
+#   cxx_runtime = "self-contained" is not implemented for the MSVC runtime yet
+#   (it would need the /MT runtime); using host-coupled
+#
+# So it is written out rather than left to the fallback. An earlier revision set
+# "self-contained" here believing it selected /MT to match a std module that cl
+# reported as /MT (C5050 _MSVC_MT, then C2375 'free' in corecrt_malloc.h); that
+# setting was a no-op, and the real mismatch was a std.ifc restored from a run
+# with a different compiler. The cache key now carries VCToolsVersion, so an
+# .ifc and its consumer can no longer come from two different cl.
+cxx_runtime = "host-coupled"
 
 defines = [
   "MO_YANXI_ALLOCATOR_2D_USE_STD_MODULE",

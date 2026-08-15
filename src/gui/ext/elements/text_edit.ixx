@@ -3,6 +3,16 @@ module;
 #include <cassert>
 #include <mo_yanxi/enum_operator_gen.hpp>
 #include <mo_yanxi/adapted_attributes.hpp>
+// try_modify(layout_config) below compares two layout_configs, whose defaulted
+// operator== walks down to rich_text_fallback_style::features, a
+// gch::small_vector. gch spells the container's operator== as a free function
+// template rather than a hidden friend, so it is not decl-reachable from the
+// exported class and mo_yanxi.typesetting.rich_text discards it from its BMI
+// along with the rest of its global module fragment. Without it here, overload
+// resolution reaches for small_vector's private allocator base instead and cl
+// reports C2243 at the point the template was defined, ui.util.ixx. Same shape
+// as the include in typesetting.segmented_layout.ixx.
+#include <gch/small_vector.hpp>
 
 export module mo_yanxi.gui.elem.text_edit;
 

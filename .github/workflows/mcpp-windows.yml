@@ -1,9 +1,11 @@
 # Windows / MSVC CI for the mcpp build.
 #
-# Only mcpp. build_and_dispatch.yml already builds this PR with xmake on the same
-# runner image and the same MSVC, so repeating it here would cost another VS 2026
-# install per run to learn nothing new. The toolchain setup below is copied from
-# that workflow so the two legs stay comparable.
+# Only mcpp: build_and_dispatch.yml already builds this PR with xmake. But it
+# builds it with the VS 2026 Insider preview toolset, so this job installs and
+# exports the same one -- comparing mcpp on 14.51 against xmake on 14.52 would
+# compare two things at once, and the preinstalled 14.51 does not even survive
+# this codebase (C1001 ICE in vector2.ixx). The toolchain steps below are copied
+# from that workflow verbatim for exactly that reason.
 #
 # xmake is not installed at all: its two asset tasks are thin wrappers around
 # Python scripts, and this job calls those scripts directly.
@@ -18,6 +20,10 @@ name: mcpp (Windows / MSVC)
 env:
   PYTHONUTF8: 1
   VULKAN_VER: 1.4.341.1
+  # Same two values as build_and_dispatch.yml, and they have to stay the same:
+  # the point of this job is that only the build system differs.
+  MSVC_VER: 14.52
+  MSVC_TOOLSET: 14.52.36629
 
 # Only `push` on master and `pull_request`. Listing the feature branch under
 # push as well made every push with an open PR start the job twice -- once for
@@ -40,9 +46,10 @@ concurrency:
 
 jobs:
   windows-msvc:
-    # Pinned, not windows-latest. The image ships VS 2026 Enterprise and that is
-    # the toolchain this job builds with, so the label is the pin -- `latest`
-    # would silently move MSVC underneath the build.
+    # Pinned, not windows-latest, and the same label build_and_dispatch.yml
+    # uses. The image decides which Windows SDK and which fallback VS the
+    # preview toolset sits on top of; `latest` would move both underneath a
+    # build that is sensitive to them.
     runs-on: windows-2025
     timeout-minutes: 180
 
@@ -97,16 +104,69 @@ jobs:
           echo "VULKAN_SDK=C:\VulkanSDK" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           echo "C:\VulkanSDK\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
-      # No VS 2026 Insider install here, and no vcvars export. The runner image
-      # (windows-2025-vs2026) already ships VS 2026 Enterprise, and mcpp's
-      # `msvc@system` discovers it itself -- the previous revision spent ~30
-      # minutes installing MSVC 14.52 preview and then compiled with the
-      # preinstalled 14.51 anyway, which the build log shows plainly:
+      # ── MSVC: the same preview toolset build_and_dispatch.yml compiles with ──
       #
-      #   exported by vcvars : VCToolsVersion 14.52.36629  (VS2026Insider)
-      #   used by every cl   : .../Visual Studio/18/Enterprise/.../14.51.36231
-      #
-      # Installing a toolchain nothing reads is not a pin, it is just latency.
+      # This has to be installed and exported, not skipped. mcpp resolves
+      # `msvc@system` by searching vswhere, then VSINSTALLDIR / VS*COMNTOOLS,
+      # then the standard Program Files paths -- so with no vcvars exported it
+      # finds the image's preinstalled VS 2026 Enterprise and builds with
+      # 14.51.36231 while xmake builds with 14.52. That is not a comparison, and
+      # 14.51 ICEs on this codebase anyway (C1001 at vector2.ixx:67).
+
+      - name: Download and Install VS 2026 Insider Build Tools (Preview MSVC ${{ env.MSVC_VER }})
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://aka.ms/vs/18/insiders/vs_BuildTools.exe" -OutFile "vs_buildtools_insider.exe"
+          $installArgs = @(
+            "--quiet", "--wait", "--norestart", "--nocache",
+            "--installPath", "C:\VS2026Insider",
+            "--add", "Microsoft.VisualStudio.Workload.VCTools",
+            "--add", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+            "--add", "Microsoft.VisualStudio.Component.VC.Preview.Tools.x86.x64",
+            "--includeRecommended"
+          )
+          $p = Start-Process -FilePath ".\vs_buildtools_insider.exe" -ArgumentList $installArgs -Wait -PassThru -NoNewWindow
+          if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) {
+              Write-Error "Installation failed with exit code: $($p.ExitCode)"; exit 1
+          }
+
+      - name: Export VS 2026 Insider Environment (MSVC ${{ env.MSVC_VER }} Preview)
+        shell: pwsh
+        run: |
+          $installPath = & vswhere.exe -latest -prerelease -products * `
+            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+            -property installationPath
+          if (-not $installPath) { Write-Error "VS 2026 Insider not found!"; exit 1 }
+          Write-Host "Found VS 2026 Insider at: $installPath"
+
+          $vcvarsall = Join-Path $installPath "VC\Auxiliary\Build\vcvarsall.bat"
+          $envLines = cmd /c "call `"$vcvarsall`" x64 -vcvars_ver=${{ env.MSVC_VER }} >nul && set"
+
+          # aka.ms/vs/18/insiders always serves the newest Insider, so the exact
+          # build moves on Microsoft's schedule. Treat a move as news, not as a
+          # failure: the line 14.52 is what must hold, because that is what the
+          # xmake leg asks vcvars for too. A drifted build number is worth
+          # printing -- it is the first thing to suspect when this job goes red
+          # on a commit that changed nothing.
+          $got = ($envLines | Select-String '^VCToolsVersion=(.*)$').Matches.Groups[1].Value
+          if (-not $got.StartsWith("${{ env.MSVC_VER }}.")) {
+              Write-Error "vcvars gave VCToolsVersion $got, expected a ${{ env.MSVC_VER }}.* toolset"
+              exit 1
+          }
+          if ($got -ne "${{ env.MSVC_TOOLSET }}") {
+              Write-Host "::warning::MSVC toolset moved: pinned ${{ env.MSVC_TOOLSET }}, installed $got"
+          }
+          Write-Host "MSVC toolset: $got"
+
+          foreach ($line in $envLines) {
+              if ($line -match "^(.*?)=(.*)$") {
+                  $key = $matches[1]
+                  $value = $matches[2]
+                  if ($key -notin "PROMPT", "ComSpec") {
+                      echo "$key=$value" >> $env:GITHUB_ENV
+                  }
+              }
+          }
 
       - name: Apply submodule patch
         shell: pwsh
@@ -126,12 +186,41 @@ jobs:
       # a std.ifc built for the static CRT to a build that had since moved to
       # the dynamic one -- which cl reports as C5050 and then fails on for real
       # in corecrt_malloc.h. A changed manifest has to mean a cold cache.
+      #
+      # VCToolsVersion is in the key for the same reason. It is the *resolved*
+      # one -- vcvars exported it into GITHUB_ENV in the step above -- so when
+      # Microsoft moves the Insider toolset the std module and every package
+      # .ifc are rebuilt by the compiler that will consume them, rather than
+      # restored from a run of a different compiler.
       - name: mcpp — cache registry and build artifacts
         uses: actions/cache@v4
         with:
           path: |
             ~/.mcpp
-          key: mcpp-win-${{ hashFiles('mcpp.toml', 'mcpp/**/mcpp.toml', 'build.mcpp') }}
+          key: mcpp-win-${{ env.VCToolsVersion }}-${{ hashFiles('mcpp.toml', 'mcpp/**/mcpp.toml', 'build.mcpp') }}
+
+      # Assert before the long build, not after: the whole premise of this job
+      # is that it differs from the xmake leg in the build system and nothing
+      # else, and mcpp picking up a different cl silently invalidates that.
+      - name: Assert mcpp resolved the exported MSVC
+        shell: pwsh
+        run: |
+          $out = (mcpp self env 2>&1 | Out-String)
+          Write-Host $out
+          # Fail on the failure mode that actually happened -- silently falling
+          # back to the image's preinstalled Enterprise toolset. Not asserting
+          # the positive: `mcpp self env` is diagnostic output, and hanging the
+          # job on its exact wording would turn a formatting change into a red
+          # build. `mcpp build` names the compiler it resolved anyway.
+          if ($out -match "14\.51\.") {
+              Write-Error ("mcpp resolved the preinstalled VS 2026 Enterprise toolset instead of the " +
+                           "exported preview one (vcvars set VCToolsVersion=$env:VCToolsVersion). " +
+                           "14.51 ICEs on this codebase, and it is not what the xmake leg builds with.")
+              exit 1
+          }
+          if ($out -notmatch "${{ env.MSVC_VER }}\.") {
+              Write-Host "::warning::could not confirm a ${{ env.MSVC_VER }} toolchain from `mcpp self env`; check the resolve line in the build step"
+          }
 
       - name: mcpp — build the library and xrgui_hello
         run: mcpp build

@@ -150,13 +150,21 @@ jobs:
 
           $envLines = cmd /c "call `"$vcvarsall`" x64 -vcvars_ver=${{ env.MSVC_VER }} >nul && set"
 
+          # What must hold is the 14.52 line -- that is what -vcvars_ver asked
+          # for, and dropping to the image's 14.51 is a real failure (C1001 ICE
+          # at vector2.ixx:67). The exact build number moves whenever
+          # aka.ms/vs/18/insiders does, which is Microsoft's schedule and not a
+          # reason to fail a commit; report it and carry on. It is still the
+          # first thing to suspect when this job reddens on an unrelated change.
           $got = ($envLines | Select-String '^VCToolsVersion=(.*)$').Matches.Groups[1].Value
-          if ($got -ne "${{ env.MSVC_TOOLSET }}") {
-              Write-Error ("MSVC toolset drifted: expected ${{ env.MSVC_TOOLSET }}, got $got. " +
-                           "aka.ms/vs/18/insiders has moved. Re-pin MSVC_TOOLSET after checking the build still passes.")
+          if (-not $got.StartsWith("${{ env.MSVC_VER }}.")) {
+              Write-Error "vcvars gave VCToolsVersion $got, expected a ${{ env.MSVC_VER }}.* toolset"
               exit 1
           }
-          Write-Host "MSVC toolset pinned at $got"
+          if ($got -ne "${{ env.MSVC_TOOLSET }}") {
+              Write-Host "::warning::MSVC toolset moved: pinned ${{ env.MSVC_TOOLSET }}, installed $got"
+          }
+          Write-Host "MSVC toolset: $got"
 
           foreach ($line in $envLines) {
               if ($line -match "^(.*?)=(.*)$") {
