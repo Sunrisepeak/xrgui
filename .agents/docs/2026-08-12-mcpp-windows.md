@@ -15,6 +15,67 @@ xmake 了，在这里再跑一遍等于每轮多装一次 VS 2026 却得不到�
 
 xmake 本身也不装：它那两个资产任务不过是 Python 脚本的薄包装，本 job 直接调脚本。
 
+### 编译器必须显式导出，不能靠 mcpp 自己找
+
+mcpp 解析 `msvc@system` 的顺序是 **vswhere → `VSINSTALLDIR` / `VS*COMNTOOLS`
+→ `Program Files\Microsoft Visual Studio\<year>\<edition>` 标准路径**。
+runner 镜像自带 VS 2026 Enterprise，所以**不导出 vcvars 就会静默选中它**：
+
+```
+Resolved msvc@system → msvc 19.51.36252
+  (C:\Program Files\Microsoft Visual Studio\18\Enterprise\...\14.51.36231\...\cl.exe)
+```
+
+而 xmake 那条腿用的是 Insider 的 14.52。两条腿编译器不同，对比就没有意义了；
+何况 14.51 在本仓直接 ICE（`vector2.ixx:67` 的 C1001）。所以本 job 必须照抄
+`build_and_dispatch.yml` 的 Insider 安装 + vcvars 导出两步，并在构建前断言
+mcpp 没有退回 14.51。
+
+曾有一版以「装了也没人读」为由删掉了 Insider 安装。上游那次绿的 run 直接证伪：
+里面每一条 cl 都是 `C:\VS2026Insider\...\14.52.36510\...\cl.exe`。
+
+### `~/.mcpp` 缓存键必须带编译器版本
+
+`~/.mcpp` 里放的是 `.ifc`，**`.ifc` 和消费它的 TU 必须出自同一个 cl**。
+缓存键只按 manifest 哈希时，跨编译器命中会先报一串
+
+```
+warning C5050: _MSVC_MT is defined in module command line and not in current command line
+```
+
+再在 `corecrt_malloc.h` 上以 `error C2375: 'free': redefinition; different linkage`
+真正炸掉。所以键里加上 vcvars 导出的 `VCToolsVersion`。
+
+### `cxx_runtime` 在 MSVC 上只有一个可选项
+
+mcpp 自己会说：
+
+```
+cxx_runtime = "self-contained" is not implemented for the MSVC runtime yet
+(it would need the /MT runtime); using host-coupled
+```
+
+也就是 MSVC 上写什么都会落到 `host-coupled`（`/MD`）。曾有一版写
+`self-contained` 想去迁就一个被 cl 报成 `/MT` 的 std 模块——那个设置是空操作，
+真正的错配是上面那条跨编译器缓存。现在直接写 `host-coupled`，正是 xmake
+`set_runtimes("MD")` 要的。
+
+### 上游那次绿和今天不是同一个编译器
+
+| | 上游绿 (2026-06-24) | 今天 |
+|---|---|---|
+| MSVC | 14.52.**36510** | 14.52.**36629** |
+| xmake | 3.0.9 | 3.1.0 |
+
+`aka.ms/vs/18/insiders` 永远给最新的 Insider，没法钉到 36510。而 36629
+收紧了模块边界的名字泄漏，**未改动的 master 在它上面编不过**——这一点用一个只含
+一个 markdown 文件的探针分支单独验证过，与本 PR 无关。下面「必须改的源码」里
+后三条就是被它逼出来的，每一条都只是把本来就在用的头/模块显式写出来。
+
+因此两条腿都只断言 **14.52 这条线**，不钉具体 build 号：钉死等于把微软的发布节奏
+变成本仓的红 CI。build 号漂移只打 warning，但它仍是这个 job 无故变红时第一个该
+怀疑的东西。
+
 ### 运行期数据靠 `mcpp::action`（对应 xmake 的 `after_build`）
 
 xmake 在 `after_build` 里把 `properties/assets` 和 `vk_layer_settings.txt` 拷进
@@ -85,7 +146,10 @@ xmake 的 `xrgui.gen_icon` / `xrgui.gen_slang` 两个任务不过是 Python 脚�
 清单放在 `mcpp/` 而不是 submodule 里，因为那是别人的仓库；glob 因此要越界指回
 `../../external/...`。将来上游化时，把文件挪进 submodule 根、去掉前缀即可，其余不变。
 
-## 四处必须改的源码
+## 必须改的源码
+
+分两类。**前四处是 mcpp 要的**，后三处**和 mcpp 无关**——是 MSVC 从 14.52.36510
+漂到 14.52.36629 之后，未改动的 master 自己就编不过了（见上面那张表）。
 
 前三处都是同一个原因：**mcpp 的 M1 扫描器禁止条件预处理块里出现 import**，
 即使那个分支根本不激活；它也不支持头单元。
@@ -110,6 +174,30 @@ xmake 的 `xrgui.gen_icon` / `xrgui.gen_slang` 两个任务不过是 Python 脚�
    `XRGUI_MINIAUDIO_IMPL_PROVIDED` 守卫。`compat.miniaudio` 会编上游自带的
    `miniaudio.c`，再实例化一次会让每个 `ma_*` 符号出现两遍——而且是**链接期**
    才报，暴露得很晚。xmake 不定义这个宏，其构建逐字节不变。
+
+### 后三处：14.52.36629 收紧了模块边界
+
+**两条腿都需要**，改的也不是逻辑，只是把本来就在用的东西显式写出来。
+旧 MSVC 让名字跨模块边界泄漏，新版不再泄漏，仅此而已。
+
+5. `typesetting.rich_text.argument.ixx` **`import mo_yanxi.math.vector2;`**。
+   它用 `math::vec2`，而已有的 import 里没人 re-export 它：`graphic.color`
+   re-export 的是 `math.vector4`，而 `vector4` 只是普通 import 了 `mo_yanxi.math`。
+   漏了它就是 `error C2039: 'vec2': is not a member of 'mo_yanxi::math'`。
+
+6. `typesetting.segmented_layout.ixx` **`#include <gch/small_vector.hpp>`**。
+   `gch::small_vector_iterator` 的 `operator-(it, it)` 是靠 ADL 找到的命名空间作用域
+   模板；`mo_yanxi.typesetting.rich_text` 只在**全局模块片段**里 include 了
+   small_vector，而 purview 从没点名过的声明会被丢弃、不写进 BMI。本 TU 要对这些
+   迭代器实例化算法，就得自己看见那个头。
+
+7. `gui/ext/elements/text_edit.ixx` **`#include <gch/small_vector.hpp>`**，同一个
+   机制的另一面。这里比较两个 `layout_config`，它 defaulted 的 `operator==`
+   一路走到 `rich_text_fallback_style::features`（一个 `gch::small_vector`）。
+   gch 把容器的 `operator==` 写成**自由函数模板而非 hidden friend**，所以它不是
+   从导出类 decl-reachable 的，同样被丢弃。找不到它时重载决议会去够 small_vector
+   的**私有 allocator 基类**，cl 就在模板**定义处** `ui.util.ixx:140` 报
+   `error C2243`——报错位置和该改的文件不是一个，这是这条最难查的地方。
 
 ## 两处接口差异
 
