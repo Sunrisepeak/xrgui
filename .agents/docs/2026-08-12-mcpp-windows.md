@@ -75,6 +75,34 @@ warning C5050: _MSVC_MT is defined in module command line and not in current com
 缓存键里同时带 mcpp 版本和**探测到的 MSVC toolset**：`~/.mcpp` 里放的是 `.ifc`，
 而 `.ifc` 和消费它的 TU 必须出自同一个 cl。
 
+### Windows 系统库要用 `link_lib`，不能写 `ldflags`
+
+`ldflags` 是**原样透传**给链接器的扁平字符串（`plan.cppm` 的注释说得很直白）。
+所以 `-luser32` 这种 GNU 拼法会原封不动送到 MSVC 的 `link.exe`，而它**不报错**：
+
+```
+LNK4044: unrecognized option '/luser32'; ignored
+```
+
+然后继续跑，直到最后一步以 **235 个 unresolved external** 收场——从错误现场
+完全看不出是链接标志被丢了。
+
+正确做法是 `build.mcpp` 里的 `mcpp::link_lib()` / `mcpp::link_search()`：
+它们走 `Transform::LibFlag` / `LibSearchPath`，由工具链方言决定拼法
+（`user32` → `user32.lib` 或 `-luser32`，目录 → `/LIBPATH:` 或 `-L`）。
+
+需要补的不只是本仓 `add_syslinks` 的那五个。**索引包也是 GNU 拼法**：
+
+| 包 | 声明 |
+|---|---|
+| `compat.glfw` | `ldflags = { "-lgdi32" }` |
+| `compat.mimalloc` | `ldflags = { "-lpsapi", "-lshell32", "-luser32", "-ladvapi32", "-lbcrypt" }` |
+| `compat.vulkan` | `ldflags = { "-Llib", "-lvulkan-1" }` |
+
+在 MSVC 下这些全部无效，所以 `build.mcpp` 里把它们重新声明了一遍
+（vulkan 的目录用 `mcpp::dep_dir("compat.vulkan")` 拿）。**这是在替包做事**，
+等索引包改成两种链接器都能消费的形式后就该删掉。
+
 ### `cxx_runtime` 在 MSVC 上只有一个可选项
 
 mcpp 自己会说：

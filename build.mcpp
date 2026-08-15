@@ -285,6 +285,45 @@ int main() {
                      asset_files.size() + (have_vk ? 1u : 0u));
     }
 
+    // ---- Windows link libraries -------------------------------------------
+    //
+    // Said here rather than as [target.windows.build] ldflags, because ldflags
+    // reach the linker verbatim. A GNU spelling therefore arrives at MSVC's
+    // link.exe unchanged, and link.exe does not reject it -- it says
+    //
+    //     LNK4044: unrecognized option '/luser32'; ignored
+    //
+    // and carries on, so the first sign of trouble is 235 unresolved externals
+    // at the very end of the build. link_lib and link_search go through the
+    // toolchain dialect instead: `user32` becomes user32.lib for MSVC and
+    // -luser32 for GNU, a search dir becomes /LIBPATH:<dir> or -L<dir>.
+    //
+    // The first group is this project's own, transcribed from xmake.lua's
+    // add_syslinks. The rest is not ours: compat.glfw, compat.mimalloc and
+    // compat.vulkan each declare their Windows links as GNU ldflags, which the
+    // MSVC linker drops for the same reason. Naming them again here is
+    // duplication of package metadata and should be deleted once those packages
+    // express it in a form both linkers can consume.
+    if (mcpp::target_os() == std::string_view{"windows"}) {
+        for (const char* lib : {
+                 "advapi32", "imm32", "ole32", "shell32", "user32",  // xmake.lua
+                 "gdi32",                                            // compat.glfw
+                 "psapi", "bcrypt",                                  // compat.mimalloc
+             }) {
+            mcpp::link_lib(lib);
+        }
+
+        // compat.vulkan carries an import library -- symbol stubs only, since
+        // vulkan-1.dll ships with the GPU driver -- under <pkg>/lib.
+        if (const char* dir = mcpp::dep_dir("compat.vulkan"); dir && *dir) {
+            mcpp::link_search((std::filesystem::path{dir} / "lib").string().c_str());
+            mcpp::link_lib("vulkan-1");
+        } else {
+            std::println("build.mcpp: WARNING: compat.vulkan install dir is unknown, "
+                         "so vulkan-1 will not be linked");
+        }
+    }
+
     // Private to this package -- consumers of xrgui have no business seeing
     // the generated tree.
     mcpp::include_dir(out_dir.string().c_str());

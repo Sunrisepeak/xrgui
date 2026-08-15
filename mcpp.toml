@@ -141,13 +141,16 @@ tests    = { sources = ["src.tests/**/*.cpp", "!src.tests/main.cpp"] }
 [feature-deps.tests]
 compat.gtest = "1.17.0"
 
-# xmake: add_cxflags("/bigobj", {tools = "cl"}) + set_encodings("utf-8"), and
-# add_syslinks("advapi32", "imm32", "ole32", "shell32", "user32").
+# xmake: add_cxflags("/bigobj", {tools = "cl"}) + set_encodings("utf-8").
 # Kept under the windows condition so the manifest still parses and scans on a
 # non-Windows host, which is how it gets checked before CI sees it.
+#
+# xmake's add_syslinks(...) is NOT here: ldflags reach the linker verbatim, so
+# a `-luser32` written here is dropped by link.exe with LNK4044 and shows up as
+# an unresolved external at the end of the build. build.mcpp says it with
+# link_lib instead, which the toolchain dialect spells for the linker in use.
 [target.windows.build]
 cxxflags = ["/bigobj", "/utf-8"]
-ldflags  = ["-ladvapi32", "-limm32", "-lole32", "-lshell32", "-luser32"]
 
 [toolchain]
 # This project is MSVC-first and upstream's MSVC CI is green; mcpp has no reason
