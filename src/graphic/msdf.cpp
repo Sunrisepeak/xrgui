@@ -14,7 +14,16 @@ module;
 #include FT_OUTLINE_H
 #endif
 
+// Under mcpp, msdfgen comes from compat.msdfgen, which is built with
+// MSDFGEN_USE_CPP11 off and publishes that fact through the msdfgen-config.h
+// every public header includes -- so the library it ships has no
+// Contour::addEdge(EdgeHolder&&). Defining the macro here anyway would declare
+// that overload for this TU alone, and the call would go unresolved at link
+// time. xrepo's msdfgen does build with it, so the xmake build keeps the define
+// and is unchanged.
+#ifndef XRGUI_MSDFGEN_NO_CPP11
 #define MSDFGEN_USE_CPP11
+#endif
 #include <msdfgen/msdfgen.h>
 #include <msdfgen/msdfgen-ext.h>
 
