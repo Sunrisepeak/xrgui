@@ -1,0 +1,189 @@
+# XRGUI under mcpp -- Windows / MSVC.
+#
+# This file is a transcription of xmake.lua, not a redesign. The xmake build is
+# MSVC-first and its CI is green, so anything that differs here is a bug in this
+# file rather than a decision. The mapping, target by target:
+#
+#   add_xrgui_target_options()   -> [target.windows.build] cxxflags
+#   add_xrgui_core_deps()        -> sources / include_dirs / defines / dependencies
+#   add_xrgui_default_stack()    -> the src.backends/* and gui.config globs
+#   target("xrgui.example")      -> [targets.xrgui_example]
+#   target("xrgui.hello")        -> [targets.xrgui_hello]
+#   target("xrgui.tests")        -> [targets.xrgui_tests]
+#
+# Linux/GCC is deliberately out of scope: this is a Windows-only PR.
+
+[package]
+name    = "xrgui"
+version = "0.1.0"
+
+[build]
+# MSVC calls C++ module interfaces .ixx; mcpp needs to be told.
+module_extensions = [".ixx"]
+
+sources = [
+  "src/**/*.ixx",                       "src/**/*.cpp",
+  "src.backends/universal/**/*.ixx",    "src.backends/universal/**/*.cpp",
+  "src.backends/vulkan/**/*.ixx",       "src.backends/vulkan/**/*.cpp",
+  "src.backends/vulkan_glfw/**/*.ixx",  "src.backends/vulkan_glfw/**/*.cpp",
+  "src.backends/miniaudio/**/*.ixx",    "src.backends/miniaudio/**/*.cpp",
+  "gui.config/**/*.ixx",                "gui.config/**/*.cpp",
+
+  # xmake adds allocator2d's single interface file into the target directly
+  # rather than depending on a library, so do the same.
+  "external/allocator2d/include/mo_yanxi/allocator2d.ixx",
+
+  # A standalone -mavx512 probe, not part of the library. xmake never lists it.
+  "!src/vectorization_check.cpp",
+]
+
+include_dirs = [
+  "external/include",                        # stb_image / beman::inplace_vector
+  "external/small_vector/source/include",    # <gch/small_vector.hpp>
+  # xrgui's own sources include <vk_mem_alloc.h> directly. vulkan_wrapper
+  # already publishes this directory, but naming it here too costs nothing and
+  # does not depend on how a path dependency propagates its include dirs.
+  "external/mo_yanxi_vulkan_wrapper/external/VulkanMemoryAllocator/include",
+  "mcpp/compat",                             # <nanosvg/nanosvg.h>, see [generated_files]
+]
+
+# xmake uses the dynamic CRT (set_runtimes "MD"), and "host-coupled" is how that
+# is spelled here. Written out rather than left to the fallback, because on MSVC
+# THIS KEY NOW SELECTS THE CRT MODEL and the fallback is not obviously the one
+# this project wants:
+#
+#   host-coupled      /MD -- matches xmake, and what this project ships
+#   self-contained    /MT -- a different CRT model, not a stricter version of
+#                     the same one
+#
+# That second line is why the value is spelled out. It changed under us: through
+# mcpp 2026.8.15 the key was inert on this ABI and said so ("not implemented for
+# the MSVC runtime yet"), so an earlier revision of this file set
+# "self-contained" harmlessly and for the wrong reason -- chasing a std module cl
+# reported as /MT (C5050 _MSVC_MT, then C2375 'free' in corecrt_malloc.h), whose
+# real cause was a std.ifc restored from a run with a different compiler. Since
+# mcpp 2026.8.16 the key is honoured (mcpp-community/mcpp#422), so making that
+# same edit today would quietly switch this build to /MT rather than do nothing.
+#
+# The .ifc half is separately fixed: the cache key carries VCToolsVersion, so a
+# std module and its consumer can no longer come from two different cl.
+cxx_runtime = "host-coupled"
+
+defines = [
+  "MO_YANXI_ALLOCATOR_2D_USE_STD_MODULE",
+  "MO_YANXI_ALLOCATOR_2D_HAS_MATH_VECTOR2",
+  "MO_YANXI_DATA_FLOW_DISABLE_THREAD_CHECK",
+  # compat.miniaudio compiles upstream's miniaudio.c, so src.backends/miniaudio/
+  # audio.cpp must not instantiate the implementation a second time. Under xmake
+  # the macro is undefined and that file keeps doing it, exactly as before.
+  "XRGUI_MINIAUDIO_IMPL_PROVIDED",
+  # compat.msdfgen is built with MSDFGEN_USE_CPP11 off and says so in the
+  # msdfgen-config.h that every one of its public headers includes -- which is
+  # the package's way of keeping both sides agreeing on which declarations
+  # exist. src/graphic/msdf.{cpp,ixx} define the macro themselves, which would
+  # break that agreement in one direction only: the overloads would be declared
+  # for those TUs and absent from the library, surfacing as an unresolved
+  # Contour::addEdge(EdgeHolder&&) at link time. xrepo's msdfgen does build with
+  # it, so xmake keeps the define and is unchanged.
+  "XRGUI_MSDFGEN_NO_CPP11",
+]
+
+# compat.nanosvg follows upstream's layout, where the headers sit in src/ and are
+# included as <nanosvg.h>. This repo writes <nanosvg/nanosvg.h> because xrepo's
+# nanosvg installs them one directory deeper. Two forwarding headers cost less
+# than touching every call site, and keep xmake and mcpp reading the same source.
+[generated_files]
+"mcpp/compat/nanosvg/nanosvg.h" = """
+#pragma once
+#include <nanosvg.h>
+"""
+"mcpp/compat/nanosvg/nanosvgrast.h" = """
+#pragma once
+#include <nanosvgrast.h>
+"""
+
+# ── Dependencies ───────────────────────────────────────────────────────────
+# Grouped by origin. The three path entries are this repo's own submodules,
+# described under mcpp/; everything else is a pinned third-party package and
+# corresponds one-to-one with an add_requires() line in xmake.lua.
+[dependencies]
+mo_yanxi_utility        = { path = "mcpp/mo_yanxi_utility" }
+mo_yanxi_vulkan_wrapper = { path = "mcpp/mo_yanxi_vulkan_wrapper" }
+mo_yanxi_react_flow     = { path = "mcpp/mo_yanxi_react_flow" }
+
+compat.glfw           = "3.4"
+compat.freetype       = "2.13.3"
+compat.vulkan         = "1.4.357.0"     # pulls compat.vulkan-headers
+compat.harfbuzz       = "14.3.0"        # text shaping, FreeType bridge included
+compat.msdfgen        = "1.13"          # SDF generation (core + FreeType import)
+compat.mimalloc       = "3.4.5"
+compat.miniaudio      = "0.11.25"
+compat.nanosvg        = "2026.07.09"
+compat.spirv-reflect  = "1.4.357.0"     # same SDK line as compat.vulkan
+compat.gtl            = "1.2.0"
+compat.plf-hive       = "2026.07.31"
+marzer.tomlplusplus   = "3.4.0"
+
+# The submodule's module/magic_enum.cppm wraps `import std;` in
+# `#ifdef MAGIC_ENUM_USE_STD_MODULE`, and mcpp's M1 scanner rejects an import
+# inside a conditional block. The index package carries a scan_override for
+# exactly that file, so taking the package is cheaper than patching upstream.
+neargye.magic_enum    = "0.9.8"
+
+# ── Targets ────────────────────────────────────────────────────────────────
+[targets.xrgui_hello]
+kind = "bin"
+main = "src.hello/main.cpp"
+
+[targets.xrgui_example]
+kind              = "bin"
+main              = "src.examples/main.cpp"
+required_features = ["examples"]
+
+# xmake's xrgui.tests target is a plain binary that links a hand-picked subset of
+# src/ plus src.tests/. mcpp discovers tests under tests/**, so this stays a
+# feature-gated binary instead; the CI job runs it directly.
+[targets.xrgui_tests]
+kind              = "bin"
+main              = "src.tests/main.cpp"
+required_features = ["tests"]
+
+[features]
+default  = []
+examples = { sources = ["src.examples/**/*.ixx", "src.examples/**/*.cpp",
+                        "!src.examples/main.cpp"] }
+tests    = { sources = ["src.tests/**/*.cpp", "!src.tests/main.cpp"] }
+
+[feature-deps.tests]
+compat.gtest = "1.17.0"
+
+# xmake: add_cxflags("/bigobj", {tools = "cl"}) + set_encodings("utf-8").
+# Kept under the windows condition so the manifest still parses and scans on a
+# non-Windows host, which is how it gets checked before CI sees it.
+#
+# xmake's add_syslinks(...) is NOT here: ldflags reach the linker verbatim, so
+# a `-luser32` written here is dropped by link.exe with LNK4044 and shows up as
+# an unresolved external at the end of the build. build.mcpp says it with
+# link_lib instead, which the toolchain dialect spells for the linker in use.
+[target.windows.build]
+cxxflags = ["/bigobj", "/utf-8"]
+
+[toolchain]
+# This project is MSVC-first and upstream's MSVC CI is green; mcpp has no reason
+# to put a different front end in front of it.
+#
+# @system means whichever VS mcpp discovers on the machine, and that used not to
+# be something this file could steer at all: mcpp asked vswhere without
+# -prerelease and only fell back to VSINSTALLDIR when vswhere found nothing, so
+# on a machine with both, the release-channel install won even from inside a
+# developer command prompt. That matters here because the release-channel
+# toolset on the CI image, 14.51, ICEs on this codebase.
+#
+# mcpp 2026.8.16.1 puts an explicit VSINSTALLDIR ahead of the probe, so
+# exporting vcvars now decides -- which is what let the workflow delete its
+# "move vswhere.exe aside" step.
+windows = "msvc@system"
+
+[profile.release]
+opt   = 2
+debug = true          # matches xmake's set_symbols("debug", "embed")

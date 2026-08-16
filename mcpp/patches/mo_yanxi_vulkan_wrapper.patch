@@ -1,0 +1,21 @@
+diff --git a/src/vk_wrap/stack_trace.cpp b/src/vk_wrap/stack_trace.cpp
+index 795c514..3ce7b5e 100644
+--- a/src/vk_wrap/stack_trace.cpp
++++ b/src/vk_wrap/stack_trace.cpp
+@@ -4,10 +4,14 @@ module;
+ 
+ module mo_yanxi.stack_trace;
+ 
+-#if defined(__cpp_lib_stacktrace)
+-
++// Hoisted out of the #if below: mcpp's M1 scanner rejects an import inside a
++// conditional preprocessor block, even an inactive one. Unconditionally
++// importing it is harmless -- when __cpp_lib_stacktrace is absent the import is
++// simply unused.
+ import mo_yanxi.meta_programming;
+ 
++#if defined(__cpp_lib_stacktrace)
++
+ void mo_yanxi::print_stack_trace(std::ostream& ss, unsigned skip, const std::stacktrace& currentStacktrace){
+ 	std::println(ss, "Stack Trace: ");
+ 

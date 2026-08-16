@@ -9,3 +9,10 @@
 /properties/assets_raw/gen/
 /properties/assets_raw/shader/spv/
 /compile_commands.json
+
+# mcpp build output
+/target/
+/mcpp.lock
+
+# emitted by mcpp.toml [generated_files]
+/mcpp/compat/
