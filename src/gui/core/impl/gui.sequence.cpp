@@ -1,14 +1,9 @@
 module;
 
-#ifndef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
 #include <gch/small_vector.hpp>
-#endif
 
 module mo_yanxi.gui.elem.sequence;
 
-#ifdef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
-import <gch/small_vector.hpp>;
-#endif
 
 namespace mo_yanxi::gui{
 

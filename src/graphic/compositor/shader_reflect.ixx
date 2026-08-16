@@ -2,9 +2,7 @@ module;
 
 #include <vulkan/vulkan.h>
 #include <cassert>
-#ifndef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
 #include <spirv_reflect.h>;
-#endif
 
 #ifdef __RESHARPER__
 #include <stdexcept>
@@ -16,9 +14,6 @@ import mo_yanxi.graphic.compositor.resource;
 import mo_yanxi.math.vector2;
 import std;
 
-#ifdef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
-import <spirv_reflect.h>;
-#endif
 
 namespace mo_yanxi::graphic{
 export struct shader_reflection{
