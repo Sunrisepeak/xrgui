@@ -43,14 +43,25 @@ vcvars 导出，**每轮多花约 7 分钟，构建日志里的 cl 一个字都�
 （顺带：导出 vcvars 也不会造成 14.51 的 cl 去读 14.52 的头。mcpp 会按它自己选中的
 toolset **合成** `INCLUDE`/`LIB`（`msvc.cppm:117`），不继承环境里的。）
 
-所以现在的做法是：装 Insider 到固定路径、直接从该路径导出 vcvars（不经 vswhere，
+曾经的做法是：装 Insider 到固定路径、直接从该路径导出 vcvars（不经 vswhere，
 因为路径是我们定的），然后**把 vswhere.exe 挪开**，逼 mcpp 落到第 2 步。
-mcpp 只在那一个字面路径找 vswhere，本 job 也没有别处用它。
 
-**这是给 mcpp 打的补丁，不是这个仓库该有的东西。** mcpp 那边改一行——
-给 vswhere 加 `-prerelease`，或让显式设置的 `VSINSTALLDIR` 优先——
-这一步就可以整个删掉。删之前，构建前有一条断言：mcpp 若没解析到 14.52 就立刻失败，
-而不是四十分钟后以 C1001 告终。
+### ✅ 那个 workaround 已经删掉了（mcpp 2026.8.16.1）
+
+当时写的是「**这是给 mcpp 打的补丁，不是这个仓库该有的东西**，mcpp 那边改一行
+就可以整个删掉」。已经改了，也已经删了 —— mcpp#432 / #434 把顺序改成
+
+```
+VSINSTALLDIR → vswhere(-prerelease) → VS*COMNTOOLS → 标准路径
+```
+
+理由不是「加一条路径」而是「**猜测不该压过答案**」：`VSINSTALLDIR` 是有人明确
+说了用哪个，vswhere 是一个排序猜测。
+
+**删掉之后这条断言反而变强了，这是关键。** 现在 vswhere.exe **在**，
+它排第一的 Enterprise 14.51 也**装着** —— 没有任何东西被拿走，
+错误答案只是必须输。而 workaround 还在的时候，「`VSINSTALLDIR` 被采纳」与
+「vswhere 找不到东西」现象完全一样，**根本无法区分缺陷是否真的修好了**。
 
 ### mcpp 版本必须钉死，且下限是 2026.8.15.1
 

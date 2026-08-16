@@ -26,14 +26,19 @@ env:
   VS_INSIDER_DIR: C:\VS2026Insider
   # Pinned, because mcpp is the thing under test here -- an unpinned install
   # makes this job's result a function of whatever the index served that hour.
-  # 2026.8.15.1 is also the floor for this project: before it, mcpp compiled the
-  # std module with no runtime flag at all, so cl defaulted it to /MT while the
-  # project TUs got /MD, and every build died in the ucrt headers with
-  #   C5050 _MSVC_MT is defined in module command line ...
-  #   error C2375: 'free': redefinition; different linkage
-  # (mcpp#422). `xlings install mcpp` served 2026.8.11.3 and reproduced exactly
-  # that on a cold cache.
-  MCPP_VER: 2026.8.15.3
+  #
+  # Two floors, both from real failures on this job:
+  #   2026.8.15.1 -- before it, mcpp compiled the std module with no runtime
+  #     flag at all, so cl defaulted it to /MT while the project TUs got /MD,
+  #     and every build died in the ucrt headers with
+  #       C5050 _MSVC_MT is defined in module command line ...
+  #       error C2375: 'free': redefinition; different linkage
+  #     (mcpp#422). `xlings install mcpp` served 2026.8.11.3 and reproduced
+  #     exactly that on a cold cache.
+  #   2026.8.16.1 -- an explicitly-set VSINSTALLDIR now outranks mcpp's vswhere
+  #     probe (mcpp#434). Below it, this job cannot reach the 14.52 toolset
+  #     without hiding vswhere.exe, which is what the deleted step did.
+  MCPP_VER: 2026.8.16.1
 
 # Only `push` on master and `pull_request`. Listing the feature branch under
 # push as well made every push with an open PR start the job twice -- once for
@@ -147,24 +152,28 @@ jobs:
       # instantiating math::vector2<float>::ceil. Measured on this job, not
       # inherited from the other one's comments.
       #
-      # Getting mcpp onto the preview toolset takes the shadowing step below,
-      # which is a workaround for mcpp and should be deleted the moment mcpp
-      # stops needing it. mcpp discovers MSVC in src/toolchain/msvc.cppm as
+      # There used to be a THIRD step here: move `vswhere.exe` aside so mcpp
+      # would fall through to VSINSTALLDIR. It is gone, and its absence is the
+      # point of this change.
+      #
+      # mcpp discovered MSVC as
       #
       #   1. vswhere -latest -products * -requires ...VC.Tools.x86.x64
       #   2. VSINSTALLDIR / VS*COMNTOOLS
       #   3. the standard Program Files paths
       #
-      # and step 1 passes no -prerelease, so an Insider instance is invisible to
-      # it and the release-channel Enterprise always wins. Step 2 -- what a
+      # Step 1 passed no -prerelease, so an Insider instance was invisible to
+      # it and the release-channel Enterprise always won; and step 2 -- what a
       # developer command prompt sets, and the one thing a caller can actually
-      # control -- is only reached when step 1 finds nothing. Exporting vcvars
-      # alone therefore changes nothing; that was measured too, at ~7 minutes a
-      # run for a build log that still named 14.51.36231.
+      # control -- was only reached when step 1 found nothing. Exporting vcvars
+      # therefore changed nothing, measured at ~7 minutes a run for a build log
+      # that still named 14.51.36231.
       #
-      # So: install the preview, export it, and take vswhere out of the picture
-      # so mcpp reaches step 2. One line in mcpp (pass -prerelease, or let an
-      # explicit VSINSTALLDIR win) makes all of this unnecessary.
+      # mcpp ${{ env.MCPP_VER }} puts an explicitly-set VSINSTALLDIR ahead of the vswhere
+      # probe (mcpp#432/#434): a guess no longer overrides an answer. So
+      # exporting vcvars is now sufficient, and the assertion below is what
+      # proves it -- if mcpp regressed to preferring vswhere, this job goes red
+      # naming 14.51 instead of silently building with the wrong compiler.
 
       - name: Download and Install VS 2026 Insider Build Tools (Preview MSVC ${{ env.MSVC_VER }})
         shell: pwsh
@@ -208,18 +217,12 @@ jobs:
               }
           }
 
-          # The workaround itself. mcpp looks for vswhere at this literal path
-          # and nowhere else, so moving it aside makes its first probe come up
-          # empty and its VSINSTALLDIR fallback -- just exported above -- decide.
-          # Nothing else in this job runs vswhere.
-          $vswhere = "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe"
-          if (Test-Path $vswhere) {
-              Move-Item $vswhere "$vswhere.disabled" -Force
-              Write-Host "moved vswhere.exe aside so mcpp falls through to VSINSTALLDIR=$vs"
-          } else {
-              Write-Host "::warning::vswhere.exe not at the path mcpp probes; it may have moved, and mcpp may now pick a different instance"
-          }
-
+          # vswhere.exe is deliberately LEFT IN PLACE, and the preinstalled
+          # Enterprise 14.51 it ranks first is left installed too. That is what
+          # makes the toolset assertion below mean something: mcpp has to
+          # choose the exported VSINSTALLDIR over a perfectly good instance its
+          # own probe would have preferred. Hiding either one would turn the
+          # assertion into "there was nothing else to pick".
           echo "MCPP_MSVC_TOOLSET=$got" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           Write-Host "MSVC toolset: $got"
 
@@ -298,13 +301,18 @@ jobs:
         run: |
           $out = (mcpp why toolchain 2>&1 | Out-String)
           Write-Host $out
-          # Worth failing on now that the step above can actually decide the
-          # answer. Falling back to the image's 14.51 does not produce a worse
-          # build, it produces C1001 forty minutes later; better to say so here.
+          # This is the load-bearing assertion of the whole job, and it got
+          # stronger when the vswhere workaround was deleted: vswhere is
+          # present, the Enterprise 14.51 it prefers is installed, and mcpp
+          # still has to land on the toolset VSINSTALLDIR names. Nothing here
+          # removes the wrong answer -- it just has to lose.
+          #
+          # Falling back to 14.51 does not produce a worse build, it produces
+          # C1001 forty minutes later; better to say so here.
           if ($out -notmatch [regex]::Escape("$env:MCPP_MSVC_TOOLSET")) {
-              Write-Error ("mcpp did not resolve $env:MCPP_MSVC_TOOLSET. If it picked 14.51, the vswhere " +
-                           "shadowing in `"Point mcpp at the preview toolset`" no longer works -- check " +
-                           "whether mcpp changed how it discovers MSVC.")
+              Write-Error ("mcpp did not resolve $env:MCPP_MSVC_TOOLSET. If it picked 14.51, an explicit " +
+                           "VSINSTALLDIR no longer outranks the vswhere probe -- that precedence is what " +
+                           "mcpp#434 established, and it is what this job depends on.")
               exit 1
           }
 

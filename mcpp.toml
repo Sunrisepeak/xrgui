@@ -165,13 +165,16 @@ cxxflags = ["/bigobj", "/utf-8"]
 # This project is MSVC-first and upstream's MSVC CI is green; mcpp has no reason
 # to put a different front end in front of it.
 #
-# @system means whichever VS mcpp discovers, and that is not something this file
-# can steer: mcpp asks vswhere without -prerelease and only falls back to
-# VSINSTALLDIR when vswhere finds nothing, so on a machine with both, the
-# release-channel install wins even from inside a developer command prompt.
-# That matters here because the release-channel toolset on the CI image, 14.51,
-# ICEs on this codebase -- so CI has to arrange for the fallback to be reached.
-# See the MSVC section of .github/workflows/mcpp-windows.yml.
+# @system means whichever VS mcpp discovers on the machine, and that used not to
+# be something this file could steer at all: mcpp asked vswhere without
+# -prerelease and only fell back to VSINSTALLDIR when vswhere found nothing, so
+# on a machine with both, the release-channel install won even from inside a
+# developer command prompt. That matters here because the release-channel
+# toolset on the CI image, 14.51, ICEs on this codebase.
+#
+# mcpp 2026.8.16.1 puts an explicit VSINSTALLDIR ahead of the probe, so
+# exporting vcvars now decides -- which is what let the workflow delete its
+# "move vswhere.exe aside" step.
 windows = "msvc@system"
 
 [profile.release]
