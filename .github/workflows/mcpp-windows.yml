@@ -38,7 +38,7 @@ env:
   #   2026.8.16.1 -- an explicitly-set VSINSTALLDIR now outranks mcpp's vswhere
   #     probe (mcpp#434). Below it, this job cannot reach the 14.52 toolset
   #     without hiding vswhere.exe, which is what the deleted step did.
-  MCPP_VER: 2026.8.16.1
+  MCPP_VER: 2026.8.16.3
 
 # Only `push` on master and `pull_request`. Listing the feature branch under
 # push as well made every push with an open PR start the job twice -- once for
