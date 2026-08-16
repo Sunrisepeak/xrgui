@@ -5,17 +5,12 @@ module;
 #include <mo_yanxi/adapted_attributes.hpp>
 
 
-#ifndef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
 #include <gch/small_vector.hpp>
-#endif
 
 export module mo_yanxi.typesetting.rich_text;
 
 export import mo_yanxi.typesetting.util;
 
-#ifdef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
-import <gch/small_vector.hpp>;
-#endif
 
 import std;
 
@@ -72,7 +67,37 @@ struct rich_text_fallback_style {
 	bool enables_bold{false};
 	rich_text_token::wrap_frame_type wrap_frame_type{rich_text_token::wrap_frame_type::none};
 
-	constexpr friend bool operator==(const rich_text_fallback_style& lhs, const rich_text_fallback_style& rhs) noexcept = default;
+	// Written out rather than `= default`, and comparing `features` through its
+	// data pointer rather than through itself. Both halves are about the same
+	// thing: nothing outside this file can see <gch/small_vector.hpp>.
+	//
+	// It is included in the global module fragment above, but a declaration the
+	// purview never names is discarded rather than written into the BMI, and gch
+	// spells both the container's operator== and its iterator's operator-(a, b)
+	// as free function templates rather than hidden friends. So an importer that
+	// compares two of these -- or two layout_configs, which hold one -- has
+	// neither. A defaulted operator== would be synthesized there and fail; so
+	// would `lhs.features == rhs.features`, because gch::operator== is itself a
+	// template and instantiates where it is called, taking std::equal and its
+	// need for operator-(a, b) with it. MSVC 14.52 stopped leaking the
+	// declarations that used to make both work by accident, and reports the
+	// wreckage against <xutility> and ui.util.ixx rather than against anything
+	// a reader would think to look at.
+	//
+	// const hb_feature_t* has none of that problem, and the two spellings mean
+	// the same thing.
+	[[nodiscard]] constexpr friend bool operator==(
+		const rich_text_fallback_style& lhs, const rich_text_fallback_style& rhs) noexcept{
+		return lhs.offset == rhs.offset
+			&& lhs.color == rhs.color
+			&& lhs.family == rhs.family
+			&& std::equal(lhs.features.data(), lhs.features.data() + lhs.features.size(),
+			              rhs.features.data(), rhs.features.data() + rhs.features.size())
+			&& lhs.enables_underline == rhs.enables_underline
+			&& lhs.enables_italic == rhs.enables_italic
+			&& lhs.enables_bold == rhs.enables_bold
+			&& lhs.wrap_frame_type == rhs.wrap_frame_type;
+	}
 
 
 	// constexpr bool operator==(const rich_text_fallback_style&) const noexcept = default;

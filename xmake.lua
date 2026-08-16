@@ -98,8 +98,6 @@ local function add_xrgui_core_deps()
 
     add_defines("MO_YANXI_ALLOCATOR_2D_USE_STD_MODULE", "MO_YANXI_ALLOCATOR_2D_HAS_MATH_VECTOR2", {public = true})
     add_defines("MO_YANXI_DATA_FLOW_DISABLE_THREAD_CHECK", {public = true})
-    -- msvc 新版好像没这问题了，哪天删了，，，
-    add_defines("XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE", {public = true})
 
     add_files("./external/allocator2d/include/mo_yanxi/allocator2d.ixx", {public = true})
     add_files(path.join(magic_enum_dir, "module/magic_enum.cppm"), {

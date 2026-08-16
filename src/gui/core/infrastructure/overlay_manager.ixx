@@ -2,9 +2,7 @@ module;
 
 #include <cassert>
 
-#if !defined(XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE) || defined(__RESHARPER__)
 #include "plf_hive.h"
-#endif
 
 export module mo_yanxi.gui.infrastructure:dialog_manager;
 
@@ -17,9 +15,6 @@ import mo_yanxi.gui.layout.policies;
 import mo_yanxi.input_handle;
 import mo_yanxi.utility;
 
-#ifdef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
-import <plf_hive.h>;
-#endif
 
 namespace mo_yanxi::gui{
 
