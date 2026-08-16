@@ -38,7 +38,19 @@ env:
   #   2026.8.16.1 -- an explicitly-set VSINSTALLDIR now outranks mcpp's vswhere
   #     probe (mcpp#434). Below it, this job cannot reach the 14.52 toolset
   #     without hiding vswhere.exe, which is what the deleted step did.
-  MCPP_VER: 2026.8.16.3
+  #
+  # 2026.8.17.1 is not a floor -- this job's path is UNCHANGED by it. It is
+  # tracked because the release binds the Windows SDK per ORIGIN (mcpp#448),
+  # and this job is the only place the `msvc@system` half runs against a real
+  # Visual Studio: the search chain, including the VSINSTALLDIR precedence the
+  # floor above is about, has to stay exactly as it was. The managed half
+  # (`msvc@<toolset>`, where WindowsSdkDir is now ignored) is covered by
+  # mcpp's own CI.
+  #
+  # One thing DOES change here: the resolved SDK version now enters the
+  # runtime contract hash as `ucrt@<version>`, so the first build on this
+  # version rebuilds from cold. That is a one-off, not a regression.
+  MCPP_VER: 2026.8.17.1
 
 # Only `push` on master and `pull_request`. Listing the feature branch under
 # push as well made every push with an open PR start the job twice -- once for
