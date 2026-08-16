@@ -10,9 +10,7 @@ module;
 #include <mo_yanxi/adapted_attributes.hpp>
 #include <mo_yanxi/enum_operator_gen.hpp>
 
-#ifndef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
 #include <msdfgen/msdfgen-ext.h>
-#endif
 
 
 export module mo_yanxi.font;
@@ -25,9 +23,6 @@ import mo_yanxi.concurrent.guard;
 import mo_yanxi.msdf_adaptor;
 import mo_yanxi.log;
 
-#ifdef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
-import <msdfgen/msdfgen-ext.h>;
-#endif
 
 import std;
 
