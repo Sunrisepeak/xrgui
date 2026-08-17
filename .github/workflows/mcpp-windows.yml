@@ -73,6 +73,31 @@ concurrency:
 
 jobs:
   windows-msvc:
+    # TWO LEGS, because `msvc@system` and `msvc@<toolset>` are two different
+    # questions and this project is the only place both can be asked at once.
+    #
+    #   system   the machine's Visual Studio, found through VSINSTALLDIR. This
+    #            runner has TWO instances -- the image's release-channel
+    #            Enterprise 14.51 and the Insider this job installs -- so it is
+    #            the only place mcpp's "a declared answer outranks a probe"
+    #            precedence (mcpp#432/#434) is exercised against a real
+    #            alternative. mcpp's own CI has one VS and cannot pose it.
+    #
+    #   managed  an xim payload. No Visual Studio at all, and the pin is REAL:
+    #            the toolset is content-addressed by sha256, so it is the same
+    #            bytes next month. The system leg can only ASSERT its pin --
+    #            aka.ms/vs/18/insiders always serves the newest Insider, so
+    #            when Microsoft moves it that leg warns and builds with
+    #            whatever arrived.
+    #
+    # Same toolset version on both (14.52.36629), so a difference between the
+    # legs is about where a compiler came from and nothing else.
+    name: windows-msvc (${{ matrix.origin }})
+    strategy:
+      fail-fast: false
+      matrix:
+        origin: [ system, managed ]
+
     # Pinned, not windows-latest, and the same label build_and_dispatch.yml
     # uses. The image decides which Windows SDK and which fallback VS the
     # preview toolset sits on top of; `latest` would move both underneath a
@@ -188,6 +213,7 @@ jobs:
       # naming 14.51 instead of silently building with the wrong compiler.
 
       - name: Download and Install VS 2026 Insider Build Tools (Preview MSVC ${{ env.MSVC_VER }})
+        if: matrix.origin == 'system'
         shell: pwsh
         run: |
           Invoke-WebRequest -Uri "https://aka.ms/vs/18/insiders/vs_BuildTools.exe" -OutFile "vs_buildtools_insider.exe"
@@ -205,6 +231,7 @@ jobs:
           }
 
       - name: Point mcpp at the preview toolset
+        if: matrix.origin == 'system'
         shell: pwsh
         run: |
           $vs = "${{ env.VS_INSIDER_DIR }}"
@@ -237,6 +264,40 @@ jobs:
           # assertion into "there was nothing else to pick".
           echo "MCPP_MSVC_TOOLSET=$got" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           Write-Host "MSVC toolset: $got"
+
+      # ── the managed leg ───────────────────────────────────────────────
+      #
+      # No Visual Studio. mcpp installs the toolset itself, from the same
+      # index it resolves every other dependency from, and the payload is
+      # content-addressed -- so `14.52.36629` here means the same bytes every
+      # run, which is the one thing the system leg cannot promise.
+      #
+      # The manifest is rewritten rather than passed `--toolchain` on each
+      # command: `mcpp why toolchain` (the assertion below) reads the
+      # manifest, and a leg whose assertion and whose build disagree about
+      # which toolchain they are talking about is worse than no assertion.
+      - name: Pin the manifest to the managed toolset
+        if: matrix.origin == 'managed'
+        shell: pwsh
+        run: |
+          $before = Get-Content mcpp.toml -Raw
+          $after = $before -replace 'windows = "msvc@system"', 'windows = "msvc@${{ env.MSVC_TOOLSET }}"'
+
+          # ASSERT THE EDIT. Without this, a manifest that stopped saying
+          # `msvc@system` -- renamed key, reformatted line, anything -- turns
+          # this leg into a second copy of the system leg that passes while
+          # proving nothing. A test that cannot fail is the failure.
+          if ($after -eq $before) {
+              Write-Error "mcpp.toml has no `windows = ""msvc@system""` line to replace; this leg would silently duplicate the system leg"
+              exit 1
+          }
+          Set-Content mcpp.toml $after -NoNewline
+          Select-String -Path mcpp.toml -Pattern '^windows = ' | ForEach-Object { Write-Host $_.Line }
+
+          # Same variable the system leg fills from vcvars, so the cache key and
+          # the assertion below are written once for both. Here it is a literal
+          # because here it is a real pin.
+          echo "MCPP_MSVC_TOOLSET=${{ env.MSVC_TOOLSET }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Apply submodule patch
         shell: pwsh
@@ -301,6 +362,22 @@ jobs:
             ~/.mcpp
           key: mcpp-win-${{ env.MCPP_VER }}-${{ env.MCPP_MSVC_TOOLSET }}-${{ hashFiles('mcpp.toml', 'mcpp/**/mcpp.toml', 'build.mcpp') }}
 
+      # AFTER the cache, not before it: the payload lands in ~/.mcpp, which is
+      # exactly what the cache restores -- installing first would download a
+      # quarter of a gigabyte and then have it overwritten. On a warm cache
+      # this step finds the toolset already there and does nothing.
+      - name: Install the managed MSVC toolset
+        if: matrix.origin == 'managed'
+        shell: pwsh
+        run: |
+          # Explicit rather than left to the manifest's auto-install, so a
+          # failure to obtain the toolset reports here instead of forty lines
+          # into a build log. Brings its own Windows SDK: the package declares
+          # `xim:windows-sdk` as a dependency.
+          mcpp toolchain install msvc ${{ env.MSVC_TOOLSET }}
+          if ($LASTEXITCODE -ne 0) { Write-Error "could not install msvc@${{ env.MSVC_TOOLSET }}"; exit 1 }
+          mcpp toolchain list
+
       # Record what mcpp itself says it resolved, before the long build.
       #
       # `mcpp why toolchain` and not `mcpp self env`: self env reports the host
@@ -308,23 +385,35 @@ jobs:
       # true, and entirely beside the point. `why` resolves the manifest's
       # [toolchain] the way the build will, so it is the one that can catch a
       # build about to run on something nobody intended.
-      - name: Assert mcpp resolved the preview toolset
+      - name: Assert mcpp resolved the intended toolset
         shell: pwsh
         run: |
           $out = (mcpp why toolchain 2>&1 | Out-String)
           Write-Host $out
-          # This is the load-bearing assertion of the whole job, and it got
-          # stronger when the vswhere workaround was deleted: vswhere is
-          # present, the Enterprise 14.51 it prefers is installed, and mcpp
-          # still has to land on the toolset VSINSTALLDIR names. Nothing here
-          # removes the wrong answer -- it just has to lose.
+          # The load-bearing assertion of the job, and it means a different
+          # thing on each leg:
           #
-          # Falling back to 14.51 does not produce a worse build, it produces
-          # C1001 forty minutes later; better to say so here.
+          #   system   vswhere is present and the Enterprise 14.51 it ranks
+          #            first is installed. Nothing here removes the wrong
+          #            answer -- it has to LOSE to the exported VSINSTALLDIR.
+          #            That precedence is mcpp#434, and it is what this leg
+          #            exists to keep honest.
+          #
+          #   managed  no Visual Studio is involved at all, so what is being
+          #            checked is that mcpp resolved the payload it installed
+          #            rather than falling back to anything on the machine.
+          #
+          # Either way, landing on 14.51 does not produce a worse build -- it
+          # produces C1001 forty minutes later. Better to say so here.
           if ($out -notmatch [regex]::Escape("$env:MCPP_MSVC_TOOLSET")) {
-              Write-Error ("mcpp did not resolve $env:MCPP_MSVC_TOOLSET. If it picked 14.51, an explicit " +
-                           "VSINSTALLDIR no longer outranks the vswhere probe -- that precedence is what " +
-                           "mcpp#434 established, and it is what this job depends on.")
+              if ("${{ matrix.origin }}" -eq "system") {
+                  Write-Error ("mcpp did not resolve $env:MCPP_MSVC_TOOLSET. If it picked 14.51, an explicit " +
+                               "VSINSTALLDIR no longer outranks the vswhere probe -- that precedence is what " +
+                               "mcpp#434 established, and it is what this leg depends on.")
+              } else {
+                  Write-Error ("mcpp did not resolve the managed msvc@$env:MCPP_MSVC_TOOLSET it just installed. " +
+                               "A fallback to a machine toolchain here would mean the manifest pin did not take.")
+              }
               exit 1
           }
 
@@ -361,6 +450,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: xrgui-mcpp-windows
+          # Per leg: upload-artifact@v4 refuses two uploads under one name,
+          # and the two legs' binaries are not interchangeable anyway.
+          name: xrgui-mcpp-windows-${{ matrix.origin }}
           path: target/**/bin/
           if-no-files-found: ignore
