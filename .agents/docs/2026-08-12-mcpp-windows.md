@@ -257,6 +257,33 @@ stderr 只是「不污染指令流」，并不等于可见——真正的把关�
 一条 `xlings install node python slang mcpp` 取代了四个手写的 setup 步骤，
 版本也和构建自身读的是同一个索引。
 
+### CI 两条腿:`msvc@system` 与 `msvc@<toolset>`
+
+同一个 toolset 版本(14.52.36629),差别只在**编译器从哪来**。
+
+| | system | managed |
+|---|---|---|
+| 装什么 | VS 2026 Insider Build Tools,**4分06秒**(实测 run 31980964778) | xim payload,~250 MB,落在已有的 `~/.mcpp` 缓存里 |
+| 需要 vcvars / VSINSTALLDIR | 要 | 不要 |
+| 那个 pin | **只能断言** | **真的是 pin** |
+
+最后一行是加这条腿的主要理由。`aka.ms/vs/18/insiders` 永远给最新的 Insider ——
+所以 system 腿只能*断言* 14.52.36629、发现微软挪了就打个 warning 然后用别的接着编。
+managed 腿的 payload 是 **sha256 内容寻址**的:下个月还是同一批字节。
+
+**那为什么不把 system 腿换掉?** 因为它是**唯一**能提出那个问题的地方:这台 runner
+上装着**两个** VS —— 镜像自带的 release 版 Enterprise 14.51,和这个 job 装的 Insider ——
+而 mcpp 必须在 vswhere 仍然把前者排第一的情况下,选中 VSINSTALLDIR 点名的后者。
+这就是 mcpp#432/#434 那条「明确的答案压过探测」。mcpp 自己的 CI 只有一个 VS,
+**posers 不出这个场景**。
+
+两处顺序上的坑,都不会自己报出来:
+
+1. **toolset 安装必须排在 cache 之后。** payload 落在 `~/.mcpp`,而那正是 cache 恢复的
+   目标 —— 先装就是先下 250 MB 再被覆盖。
+2. **改写 manifest 的那步必须自我断言。** 万一 `windows = "msvc@system"` 那行改了名或换了
+   格式,替换会静默失效,managed 腿就变成 system 腿的副本 —— **照样绿,但什么都没证明**。
+
 ## 对应关系
 
 | xmake.lua | mcpp |
