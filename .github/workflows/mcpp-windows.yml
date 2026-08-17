@@ -362,22 +362,6 @@ jobs:
             ~/.mcpp
           key: mcpp-win-${{ env.MCPP_VER }}-${{ env.MCPP_MSVC_TOOLSET }}-${{ hashFiles('mcpp.toml', 'mcpp/**/mcpp.toml', 'build.mcpp') }}
 
-      # AFTER the cache, not before it: the payload lands in ~/.mcpp, which is
-      # exactly what the cache restores -- installing first would download a
-      # quarter of a gigabyte and then have it overwritten. On a warm cache
-      # this step finds the toolset already there and does nothing.
-      - name: Install the managed MSVC toolset
-        if: matrix.origin == 'managed'
-        shell: pwsh
-        run: |
-          # Explicit rather than left to the manifest's auto-install, so a
-          # failure to obtain the toolset reports here instead of forty lines
-          # into a build log. Brings its own Windows SDK: the package declares
-          # `xim:windows-sdk` as a dependency.
-          mcpp toolchain install msvc ${{ env.MSVC_TOOLSET }}
-          if ($LASTEXITCODE -ne 0) { Write-Error "could not install msvc@${{ env.MSVC_TOOLSET }}"; exit 1 }
-          mcpp toolchain list
-
       # Record what mcpp itself says it resolved, before the long build.
       #
       # `mcpp why toolchain` and not `mcpp self env`: self env reports the host
@@ -385,6 +369,20 @@ jobs:
       # true, and entirely beside the point. `why` resolves the manifest's
       # [toolchain] the way the build will, so it is the one that can catch a
       # build about to run on something nobody intended.
+      # NO EXPLICIT `mcpp toolchain install` ON THE MANAGED LEG, deliberately.
+      #
+      # The manifest pin auto-installs -- `[toolchain] windows =
+      # "msvc@<toolset>"` resolves through the same autoInstall path as any
+      # other dependency, and drags in the `xim:windows-sdk` the package
+      # declares. Running the install by hand first would mean this leg passes
+      # even if that path were broken, which is the one thing it is here to
+      # demonstrate: declaring the toolchain is enough.
+      #
+      # `mcpp why toolchain` goes through prepare_build, so THIS step is where
+      # the toolset is obtained on a cold cache. It is after the cache step for
+      # that reason: the payload lands in ~/.mcpp, which is what the cache
+      # restores, so installing earlier would download a quarter of a gigabyte
+      # and then have it overwritten.
       - name: Assert mcpp resolved the intended toolset
         shell: pwsh
         run: |

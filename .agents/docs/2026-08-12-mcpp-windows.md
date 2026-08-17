@@ -277,6 +277,12 @@ managed 腿的 payload 是 **sha256 内容寻址**的:下个月还是同一批�
 这就是 mcpp#432/#434 那条「明确的答案压过探测」。mcpp 自己的 CI 只有一个 VS,
 **posers 不出这个场景**。
 
+managed 腿**不显式跑 `mcpp toolchain install`**。manifest 里的
+`[toolchain] windows = "msvc@<toolset>"` 走的是和任何其它依赖一样的
+`autoInstall` 路径(`prepare.cppm:1364`),并会带上包声明的 `xim:windows-sdk`。
+手动先装一遍的话,**这条路径坏了这条腿也照样绿** —— 而"声明就够了"正是它要证明的事。
+`mcpp why toolchain` 本身走 `prepare_build`,所以冷缓存下 toolset 就是在那一步拿到的。
+
 两处顺序上的坑,都不会自己报出来:
 
 1. **toolset 安装必须排在 cache 之后。** payload 落在 `~/.mcpp`,而那正是 cache 恢复的
