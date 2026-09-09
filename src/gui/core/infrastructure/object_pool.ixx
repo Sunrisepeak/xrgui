@@ -7,6 +7,8 @@ export module mo_yanxi.gui.infrastructure:object_pool;
 
 import std;
 import mo_yanxi.type_register;
+// For the explicit instantiation at the bottom of this file.
+import mo_yanxi.gui.alloc;
 
 
 namespace mo_yanxi::gui{
@@ -257,5 +259,32 @@ public:
 		return acquire_pool<T>().acquire(std::forward<Args>(args)...);
 	}
 };
+
+// Instantiated HERE, in the one translation unit that includes <gtl/phmap.hpp>.
+//
+// gtl's raw_hash_set carries
+//
+//     friend struct hashtable_debug_internal::HashtableDebugAccess;
+//
+// and clang cannot find that name -- declared three lines up in phmap.hpp, in
+// the very namespace it says it searched -- when the specialisation is
+// instantiated from a DIFFERENT translation unit than the one that included the
+// header. Reduced, it needs all three at once: a class template, a mapped type
+// depending on that template's parameters, and the instantiation triggered from
+// elsewhere. Remove any one and it compiles.
+//
+// The code is legal and the header is fine, so this is a clang defect rather
+// than gtl's; the mechanism is not established, and this codebase's rule for
+// clang + C++20 modules is to move the shape, not to hunt it.
+//
+// Naming the specialisation here moves the instantiation back into this file,
+// where the friend declaration resolves. It is one line, it costs nothing at
+// runtime, and it does not touch gtl or replace the container -- the two
+// alternatives were dropping to std::unordered_map, or pulling phmap.hpp into
+// every consumer's global module fragment.
+//
+// scene.ixx holds the only specialisation this project uses. A second one would
+// fail the same way and want its own line; that is why the failure is loud.
+template struct any_pool<false, mr::unvs_allocator<std::byte>>;
 
 }

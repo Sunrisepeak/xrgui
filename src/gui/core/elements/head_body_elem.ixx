@@ -8,6 +8,7 @@ export import mo_yanxi.gui.infrastructure;
 import mo_yanxi.gui.elem_containers;
 import std;
 import mo_yanxi.views;
+import mo_yanxi.math;
 
 namespace mo_yanxi::gui{
 
