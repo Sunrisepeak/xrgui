@@ -312,32 +312,14 @@ int main() {
 
     // ---- Windows link libraries -------------------------------------------
     //
-    // Said here rather than as [target.windows.build] ldflags, because ldflags
-    // reach the linker verbatim. A GNU spelling therefore arrives at MSVC's
-    // link.exe unchanged, and link.exe does not reject it -- it says
+    // The fixed list of system libraries is NOT here. It is data, not a
+    // decision, so it is declared in mcpp.toml as
+    // `[target.windows.runtime] libraries` -- see the note there for why the
+    // spelling matters and why it could not live there before mcpp 2026.9.9.1.
     //
-    //     LNK4044: unrecognized option '/luser32'; ignored
-    //
-    // and carries on, so the first sign of trouble is 235 unresolved externals
-    // at the very end of the build. link_lib and link_search go through the
-    // toolchain dialect instead: `user32` becomes user32.lib for MSVC and
-    // -luser32 for GNU, a search dir becomes /LIBPATH:<dir> or -L<dir>.
-    //
-    // The first group is this project's own, transcribed from xmake.lua's
-    // add_syslinks. The rest is not ours: compat.glfw, compat.mimalloc and
-    // compat.vulkan each declare their Windows links as GNU ldflags, which the
-    // MSVC linker drops for the same reason. Naming them again here is
-    // duplication of package metadata and should be deleted once those packages
-    // express it in a form both linkers can consume.
+    // What remains is the one library whose SEARCH PATH cannot be written down
+    // ahead of time, because it depends on what is installed on the machine.
     if (mcpp::target_os() == std::string_view{"windows"}) {
-        for (const char* lib : {
-                 "advapi32", "imm32", "ole32", "shell32", "user32",  // xmake.lua
-                 "gdi32",                                            // compat.glfw
-                 "psapi", "bcrypt",                                  // compat.mimalloc
-             }) {
-            mcpp::link_lib(lib);
-        }
-
         // vulkan-1: an import library of symbol stubs, since vulkan-1.dll ships
         // with the GPU driver. compat.vulkan carries one under <pkg>/lib, and
         // the Vulkan SDK -- which is what the xmake build links against, via

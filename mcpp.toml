@@ -160,13 +160,38 @@ compat.gtest = "1.17.0"
 # xmake: add_cxflags("/bigobj", {tools = "cl"}) + set_encodings("utf-8").
 # Kept under the windows condition so the manifest still parses and scans on a
 # non-Windows host, which is how it gets checked before CI sees it.
-#
-# xmake's add_syslinks(...) is NOT here: ldflags reach the linker verbatim, so
-# a `-luser32` written here is dropped by link.exe with LNK4044 and shows up as
-# an unresolved external at the end of the build. build.mcpp says it with
-# link_lib instead, which the toolchain dialect spells for the linker in use.
 [target.windows.build]
 cxxflags = ["/bigobj", "/utf-8"]
+
+# xmake's add_syslinks(...), plus what three index packages spell in a form the
+# MSVC linker drops.
+#
+# NOT `ldflags`: those reach the linker verbatim, so a GNU `-luser32` written
+# there arrives at link.exe unchanged, and link.exe does not reject it --
+#
+#     LNK4044: unrecognized option '/luser32'; ignored
+#
+# -- it carries on, and the first sign of trouble is 235 unresolved externals at
+# the very end of the build. `libraries` is the platform-neutral spelling: the
+# same `user32` becomes user32.lib for MSVC and -luser32 for GNU.
+#
+# This lived in build.mcpp as mcpp::link_lib() until mcpp 2026.9.9.1, because a
+# `[target.<pred>.runtime]` table used to be parsed and then discarded --
+# silently, which is the worst way for a manifest key to not work. It is applied
+# now (mcpp-community/mcpp#594), so the declaration belongs here, where it is
+# read as data rather than executed as a C++ program.
+#
+# The first group is this project's own. The rest is not ours: compat.glfw,
+# compat.mimalloc and compat.vulkan each declare their Windows links as GNU
+# ldflags, which MSVC drops for the reason above. Naming them again is
+# duplication of package metadata and should be deleted once those packages
+# express it as `libraries` -- which is available to them today.
+[target.windows.runtime]
+libraries = [
+  "advapi32", "imm32", "ole32", "shell32", "user32",  # xmake.lua add_syslinks
+  "gdi32",                                            # compat.glfw
+  "psapi", "bcrypt",                                  # compat.mimalloc
+]
 
 [toolchain]
 # This project is MSVC-first and upstream's MSVC CI is green; mcpp has no reason

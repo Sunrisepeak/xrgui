@@ -86,7 +86,17 @@ warning C5050: _MSVC_MT is defined in module command line and not in current com
 缓存键里同时带 mcpp 版本和**探测到的 MSVC toolset**：`~/.mcpp` 里放的是 `.ifc`，
 而 `.ifc` 和消费它的 TU 必须出自同一个 cl。
 
-### Windows 系统库要用 `link_lib`，不能写 `ldflags`
+下限后来又抬了一次。**2026.8.18.1 到 2026.9.8.1 之间的版本不能用**：`#433` 让
+扫描器把 `module : private;` 读成一个名为 `:` 的实现分区，而 `src/font/font.ixx`
+正好用了这个标准的私有模块片段，于是
+
+```
+font.ixx:704: file already provides module 'mo_yanxi.font'; cannot also provide ':'
+```
+
+修复在 **2026.9.9.1**（mcpp#594）。本仓钉的就是它。
+
+### Windows 系统库要用 `libraries`，不能写 `ldflags`
 
 `ldflags` 是**原样透传**给链接器的扁平字符串（`plan.cppm` 的注释说得很直白）。
 所以 `-luser32` 这种 GNU 拼法会原封不动送到 MSVC 的 `link.exe`，而它**不报错**：
@@ -98,9 +108,17 @@ LNK4044: unrecognized option '/luser32'; ignored
 然后继续跑，直到最后一步以 **235 个 unresolved external** 收场——从错误现场
 完全看不出是链接标志被丢了。
 
-正确做法是 `build.mcpp` 里的 `mcpp::link_lib()` / `mcpp::link_search()`：
-它们走 `Transform::LibFlag` / `LibSearchPath`，由工具链方言决定拼法
+正确做法是清单里的 `[target.windows.runtime] libraries`：它由工具链方言决定拼法
 （`user32` → `user32.lib` 或 `-luser32`，目录 → `/LIBPATH:` 或 `-L`）。
+
+**这一段原本写的是 `build.mcpp` 里的 `mcpp::link_lib()`**，因为在
+2026.9.9.1 之前，只带 `[target.<pred>.runtime]` 的条件表会被解析然后丢弃——
+**不报任何错**。也就是说那时最自然的写法静默失效，只能退回去写 C++ 程序。
+mcpp#594 修了它（顺带给 `[runtime]` 和 `[target.<pred>.runtime]` 补上了
+未知键报告），所以固定的那一串系统库现在是数据，写在 `mcpp.toml` 里。
+
+`build.mcpp` 里只剩 `vulkan-1`：它的**搜索目录**取决于机器上装了什么
+（`compat.vulkan` 的 payload 还是 `$VULKAN_SDK`），提前写不下来。
 
 需要补的不只是本仓 `add_syslinks` 的那五个。**索引包也是 GNU 拼法**：
 
@@ -140,9 +158,18 @@ array_queue.ixx(191): error C3474: could not open output file '/interface'
 8 个带 BOM 的文件里只有 2 个属于后者（`array_queue.ixx`、`array_stack.ixx`），
 它们又分布在不同的 feature 构建里，所以每轮挂的步骤都不一样。
 
-CI 在打完 patch 后统一剥掉 submodule 里 `.ixx`/`.cppm` 的 BOM。剥掉是安全的：
-编译行上有 `/utf-8`，没有谁靠 BOM 推断编码。**不做成 patch 文件**，因为一个内容
-只有三个不可见字节的 patch 没法审。
+### ✅ 这个 workaround 也删掉了（mcpp 2026.9.9.1）
+
+CI 曾经统一剥掉 submodule 里 `.ixx`/`.cppm` 的 BOM。mcpp#594 让 BOM 在
+「字节变成行」的那一层就被吃掉，且 mcpp 读的每一个 TOML 文档同样处理，
+UTF-16/32 则按名字明确拒绝。所以 submodule 保留它们的 BOM，这个 job
+也不再在构建前改写检出的源码。
+
+同一个 PR 还修了这条链的下半截：`module_lang` / `module_output` 改成**逐边**
+绑定，由扫描结果而非文件扩展名决定。此前扩展名说「这是模块接口」而扫描说
+「它不提供模块」时，那条边会带着接口的 flag 却没有 BMI——clang 接受空的
+`-fmodule-output=` 并且干脆不写 BMI，还把实现单元当接口编；GCC 的接口拼法就是
+普通语言选项，所以同一个工程在 GCC 上是好的。
 
 ### `cxx_runtime` 在 MSVC 上现在**真的会选 CRT 模型**（这一段已被推翻）
 

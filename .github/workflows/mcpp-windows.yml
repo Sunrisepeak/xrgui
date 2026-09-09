@@ -27,7 +27,7 @@ env:
   # Pinned, because mcpp is the thing under test here -- an unpinned install
   # makes this job's result a function of whatever the index served that hour.
   #
-  # Two floors, both from real failures on this job:
+  # Three floors, all from real failures on this job:
   #   2026.8.15.1 -- before it, mcpp compiled the std module with no runtime
   #     flag at all, so cl defaulted it to /MT while the project TUs got /MD,
   #     and every build died in the ucrt headers with
@@ -38,19 +38,28 @@ env:
   #   2026.8.16.1 -- an explicitly-set VSINSTALLDIR now outranks mcpp's vswhere
   #     probe (mcpp#434). Below it, this job cannot reach the 14.52 toolset
   #     without hiding vswhere.exe, which is what the deleted step did.
+  #   2026.9.9.1 -- src/font/font.ixx uses the private module fragment
+  #     `module : private;`, and from 2026.8.18.1 through 2026.9.8.1 mcpp's
+  #     scanner read that as an implementation partition NAMED ':' and refused
+  #     the file:
+  #       font.ixx:704: file already provides module 'mo_yanxi.font';
+  #                     cannot also provide ':'
+  #     A regression from mcpp#433, fixed by mcpp#594. That whole range is
+  #     unusable here, so this is a floor and not merely a preference.
   #
-  # 2026.8.17.1 is not a floor -- this job's path is UNCHANGED by it. It is
-  # tracked because the release binds the Windows SDK per ORIGIN (mcpp#448),
-  # and this job is the only place the `msvc@system` half runs against a real
-  # Visual Studio: the search chain, including the VSINSTALLDIR precedence the
-  # floor above is about, has to stay exactly as it was. The managed half
-  # (`msvc@<toolset>`, where WindowsSdkDir is now ignored) is covered by
-  # mcpp's own CI.
+  # 2026.8.17.1 was tracked rather than required: the release binds the Windows
+  # SDK per ORIGIN (mcpp#448), and this job is the only place the `msvc@system`
+  # half runs against a real Visual Studio, so its search chain -- including
+  # the VSINSTALLDIR precedence the floor above is about -- has to stay exactly
+  # as it was. The managed half (`msvc@<toolset>`, where WindowsSdkDir is now
+  # ignored) is covered by mcpp's own CI. The resolved SDK version also entered
+  # the runtime contract hash as `ucrt@<version>` there, which cost one cold
+  # rebuild.
   #
-  # One thing DOES change here: the resolved SDK version now enters the
-  # runtime contract hash as `ucrt@<version>`, so the first build on this
-  # version rebuilds from cold. That is a one-off, not a regression.
-  MCPP_VER: 2026.8.17.1
+  # 2026.9.9.1 additionally deleted two steps from this job: the submodule
+  # patch (now a `[scan_overrides]` declaration) and the BOM strip (mcpp
+  # consumes the mark itself). Both are described where they used to be.
+  MCPP_VER: 2026.9.9.1
 
 # Only `push` on master and `pull_request`. Listing the feature branch under
 # push as well made every push with an open PR start the job twice -- once for
@@ -299,50 +308,27 @@ jobs:
           # because here it is a real pin.
           echo "MCPP_MSVC_TOOLSET=${{ env.MSVC_TOOLSET }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Apply submodule patch
-        shell: pwsh
-        run: |
-          # One hoisted import in mo_yanxi_vulkan_wrapper -- mcpp's M1 scanner
-          # rejects an import inside a conditional preprocessor block. See the
-          # patch header. Idempotent: skip when it is already applied.
-          $p = "$PWD\mcpp\patches\mo_yanxi_vulkan_wrapper.patch"
-          Push-Location external/mo_yanxi_vulkan_wrapper
-          git apply --check $p 2>$null
-          if ($LASTEXITCODE -eq 0) { git apply $p; Write-Host "patch applied" }
-          else { Write-Host "patch already applied, skipping" }
-          Pop-Location
+      # There used to be an "Apply submodule patch" step here, hoisting one
+      # `import` out of a `#if` in mo_yanxi_vulkan_wrapper so mcpp's M1 scanner
+      # would accept the file. It is now declared instead, as a
+      # `[scan_overrides]` entry in mcpp/mo_yanxi_vulkan_wrapper/mcpp.toml --
+      # the escape hatch mcpp provides for exactly this shape. mcpp audits the
+      # declaration against the compiler's own P1689 scan on every build, so it
+      # cannot silently drift from the source it describes.
 
-      - name: Strip UTF-8 BOMs from submodule module interfaces
-        shell: pwsh
-        run: |
-          # mcpp's scanner reads module declarations line by line and does not
-          # skip a byte-order mark -- nothing in its source mentions one. A file
-          # that opens with EF BB BF followed immediately by `export module X;`
-          # therefore provides no module as far as mcpp is concerned, so the
-          # compile edge gets no $bmi_out, and the MSVC rule still emits
-          # `/ifcOutput $bmi_out`. cl then reads the next token as the filename:
-          #
-          #     array_queue.ixx(191): error C3474: could not open output file '/interface'
-          #
-          # Only files whose FIRST line is the module declaration are affected.
-          # The submodules also carry BOMs on files that open with `module;`,
-          # and those are fine -- their `export module` sits on a later line.
-          # That is what made this look intermittent rather than deterministic.
-          #
-          # Stripping is safe: /utf-8 is on the compile line, so nothing infers
-          # the encoding from a BOM. Not a patch file, because a patch whose
-          # only content is three invisible bytes is unreviewable.
-          $bom = [char]0xFEFF
-          $n = 0
-          Get-ChildItem external -Recurse -Include *.ixx,*.cppm -ErrorAction SilentlyContinue | ForEach-Object {
-              $raw = [System.IO.File]::ReadAllBytes($_.FullName)
-              if ($raw.Length -ge 3 -and $raw[0] -eq 0xEF -and $raw[1] -eq 0xBB -and $raw[2] -eq 0xBF) {
-                  [System.IO.File]::WriteAllBytes($_.FullName, $raw[3..($raw.Length - 1)])
-                  Write-Host "stripped BOM: $($_.FullName)"
-                  $n++
-              }
-          }
-          Write-Host "BOMs stripped: $n"
+      # There used to be a "Strip UTF-8 BOMs from submodule module interfaces"
+      # step here, deleting the three bytes from every .ixx/.cppm under
+      # external/. mcpp's scanner read module declarations line by line without
+      # skipping a byte-order mark, so a file opening with EF BB BF followed by
+      # `export module X;` provided no module as far as mcpp was concerned --
+      # and the failure surfaced at the consumer, or as
+      # `could not open output file '/interface'` from an empty /ifcOutput.
+      #
+      # mcpp 2026.9.9.1 consumes the mark where bytes become lines
+      # (mcpp-community/mcpp#594), so the submodules keep their BOMs and this
+      # job stops rewriting checked-out sources before building them. MSVC
+      # writes a BOM by default, which is why the workaround was needed against
+      # ordinary input rather than against something exotic.
 
       # No restore-keys, deliberately. ~/.mcpp holds compiled artifacts whose
       # validity depends on the compile flags, and a loose prefix restore served

@@ -37,3 +37,21 @@ defines = [
 [dependencies]
 mo_yanxi_utility = { path = "../mo_yanxi_utility" }
 compat.vulkan    = "1.4.357.0"
+
+# stack_trace.cpp guards `import mo_yanxi.meta_programming;` behind
+# `#if defined(__cpp_lib_stacktrace)`, and mcpp's M1 scanner rejects an import
+# inside a conditional block. This is the case the feature exists for -- mcpp's
+# own documentation cites fmt's `src/fmt.cc`, which guards `import std;` behind
+# `#ifdef FMT_IMPORT_STD`, in exactly this shape.
+#
+# Declaring it replaces mcpp/patches/mo_yanxi_vulkan_wrapper.patch, so the job
+# no longer rewrites a checked-out submodule before building it.
+#
+# The declaration is TRUE ON MSVC, where __cpp_lib_stacktrace is defined and the
+# import is therefore live. It is not unconditionally true, and it does not need
+# to be: this manifest builds a Windows/MSVC target. mcpp audits it against the
+# compiler's own P1689 scan on every build and fails the edge with both sides
+# printed if they diverge, so a compiler that does not define the macro reports
+# the mismatch rather than silently building a wrong module graph.
+[scan_overrides."../../external/mo_yanxi_vulkan_wrapper/src/vk_wrap/stack_trace.cpp"]
+imports = ["mo_yanxi.meta_programming"]
