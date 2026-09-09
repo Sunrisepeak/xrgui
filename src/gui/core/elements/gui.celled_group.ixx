@@ -28,8 +28,32 @@ struct create_handle_base{
 	struct promise_type{
 		[[nodiscard]] promise_type() = default;
 
-		create_handle_base get_return_object(){
-			return create_handle_base{handle::from_promise(*this)};
+		// Returns the bare handle, NOT a create_handle_base.
+		//
+		// The return object is stored INSIDE the coroutine frame (clang names the
+		// slot `__coro_gro`). When that slot held a create_handle_base, two
+		// objects owned the same coroutine at once -- the caller's handle and one
+		// living in the frame the handle manages -- and the second one's
+		// destructor ran while the frame was being torn down:
+		//
+		//   ~create_handle_base(caller)  -> hdl->destroy()
+		//     <frame>.destroy            -> destructs __coro_gro
+		//       ~create_handle_base(gro) -> !done() on a dying frame -> resume()
+		//                                                              SEGV
+		//
+		// Measured: at the crash, __coro_gro.hdl still held 0x7fff3af50050, which
+		// is the address of the very frame being destroyed.
+		//
+		// std::coroutine_handle is trivially destructible, so the slot now owns
+		// nothing and runs no destructor; the caller's create_handle is the only
+		// owner. Its converting constructor from `handle&&` does the rest.
+		//
+		// This was NOT a clang defect and not frame elision -- an earlier reading
+		// blamed HALO and was wrong; the two frames are in unrelated regions. It
+		// is a double-owner, and MSVC survived it only by destroying the slot in
+		// an order that happened not to notice.
+		handle get_return_object(){
+			return handle::from_promise(*this);
 		}
 
 		[[nodiscard]] static auto initial_suspend() noexcept{ return std::suspend_never{}; }

@@ -266,6 +266,13 @@ struct default_application::state{
 				loop->get_renderer().get_valid_cmd_buf(),
 				loop->get_renderer().get_fence());
 			ctx.flush();
+
+			// After the first present, not before. The window is created hidden
+			// (see backend::glfw::initialize) so that the ~650 ms of Vulkan and
+			// asset initialisation is not spent showing an unpainted rectangle.
+			// show() is idempotent, so calling it every frame costs a branch.
+			ctx.window().show();
+
 			loop->reset_term();
 		}
 
