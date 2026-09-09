@@ -1,3 +1,10 @@
+module;
+
+// Aligned operator new: without this unit's own declaration, clang reports
+// the call as ambiguous between libc++'s (reached through `import std`)
+// and the one implicitly declared here.
+#include <new>
+
 //
 
 //

@@ -443,7 +443,16 @@ struct emit_t{
 	FORCE_INLINE constexpr decltype(auto) operator()(Sink& sink, Instr&& instr) const
 		noexcept(noexcept(sink(std::forward<Instr>(instr)))){
 		ATTR_FORCEINLINE_SENTENCE
-		ADAPTED_MUST_TAIL
+		// No ADAPTED_MUST_TAIL here.
+		//
+		// [[clang::musttail]] is a REQUIREMENT, not a hint: the callee's
+		// signature must match the caller's exactly, and clang errors when it
+		// does not ("cannot perform a tail call ... because its signature is
+		// incompatible with the calling function"). It cannot here -- this
+		// operator() takes (Sink&, Instr&&) and forwards to a callable taking
+		// (const emit_t&, Sink&) -- so the attribute was asking for something
+		// that was never going to happen. MSVC's spelling accepted it silently,
+		// which is why it survived.
 		return sink(std::forward<Instr>(instr));
 	}
 
@@ -452,7 +461,16 @@ struct emit_t{
 	FORCE_INLINE constexpr decltype(auto) operator()(Sink& sink, Instr&& instr) const
 		noexcept(noexcept(std::forward<Instr>(instr)(*this, sink))){
 		ATTR_FORCEINLINE_SENTENCE
-		ADAPTED_MUST_TAIL
+		// No ADAPTED_MUST_TAIL here.
+		//
+		// [[clang::musttail]] is a REQUIREMENT, not a hint: the callee's
+		// signature must match the caller's exactly, and clang errors when it
+		// does not ("cannot perform a tail call ... because its signature is
+		// incompatible with the calling function"). It cannot here -- this
+		// operator() takes (Sink&, Instr&&) and forwards to a callable taking
+		// (const emit_t&, Sink&) -- so the attribute was asking for something
+		// that was never going to happen. MSVC's spelling accepted it silently,
+		// which is why it survived.
 		return std::forward<Instr>(instr)(*this, sink);
 	}
 };
@@ -632,8 +650,23 @@ struct alignas(instr_required_align) quad_group{
 
 
 
+	// The broadcast constructor: one value into all four lanes.
+	//
+	// The constraint used to carry `!std::convertible_to<const Ty&, quad_group>`
+	// as well. That asks whether Ty converts to the class currently being
+	// defined, and answering it requires checking this very constructor's
+	// constraint -- clang says so plainly:
+	//
+	//   error: satisfaction of constraint
+	//   '!std::convertible_to<const Ty &, quad_group<T>>' depends on itself
+	//
+	// It is dropped rather than reformulated because the case it excluded is
+	// already excluded: `spec_of<Ty, quad_group>` covers a quad_group, the
+	// std::array overload above covers an array, and what remains is a Ty that
+	// converts BOTH to a single T and to a whole quad_group -- which would be
+	// ambiguous against the other constructors whatever this line said.
 	template <typename Ty>
-		requires (std::constructible_from<T, const Ty&> && !std::convertible_to<const Ty&, quad_group> && !spec_of<Ty, quad_group>)
+		requires (std::constructible_from<T, const Ty&> && !spec_of<Ty, quad_group>)
 	[[nodiscard]] FORCE_INLINE explicit(false) constexpr quad_group(const Ty& v) noexcept : values{T(v), T(v), T(v), T(v)}{}
 
 	template <typename Ty>

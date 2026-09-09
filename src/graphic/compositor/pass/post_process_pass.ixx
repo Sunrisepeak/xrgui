@@ -18,6 +18,9 @@ export import mo_yanxi.vk;
 import mo_yanxi.meta_programming;
 import mo_yanxi.utility;
 import mo_yanxi.raw_byte_buffer;
+// vk:: names are used directly below. Module visibility is not transitive:
+// a module that USES a name must import the module that exports it.
+import mo_yanxi.vk.util;
 
 
 namespace mo_yanxi::graphic::compositor{

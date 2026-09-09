@@ -841,7 +841,7 @@ private:
 
 	static std::string format_excerpt(std::u32string_view s, std::size_t max_len = 30) {
 		std::string utf8_str = to_utf8(s);
-		size_t pos = 0;
+		std::size_t pos = 0;
 		while((pos = utf8_str.find('\n', pos)) != std::string::npos) {
 			utf8_str.replace(pos, 1, "\\n");
 			pos += 2;

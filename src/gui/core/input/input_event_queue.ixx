@@ -2,6 +2,19 @@
 
 //
 
+module;
+
+// <new> in the global module fragment, for the aligned operator new that
+// std::vector<input_event_variant> needs -- the type is over-aligned, so
+// libc++'s allocator takes the align_val_t path.
+//
+// Without it clang reports the call as ambiguous between libc++'s declaration
+// (reached through `import std`) and a second candidate with no source
+// location -- the one every translation unit gets implicitly. Including the
+// header gives this unit the same declaration libc++ has, and the two are then
+// one entity rather than two.
+#include <new>
+
 export module mo_yanxi.input_handle.input_event_queue;
 
 import std;

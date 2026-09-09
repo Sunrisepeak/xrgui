@@ -6,6 +6,7 @@ module;
 module mo_yanxi.backend.vulkan.renderer;
 
 import mo_yanxi.backend.vulkan.renderer.components;
+import mo_yanxi.views;
 
 namespace mo_yanxi::backend::vulkan{
 using mo_yanxi::vk::sync::sync_barrier_batch;
@@ -477,7 +478,7 @@ void renderer::resize(VkExtent2D extent){
 
 	{
 		vk::descriptor_mapper mapper{mask_descriptor_buffer_};
-		for(auto&& [i, mask_image_view] : attachment_manager_.get_mask_image_views() | std::views::enumerate){
+		for(auto&& [i, mask_image_view] : attachment_manager_.get_mask_image_views() | mo_yanxi::views::enumerate){
 			mapper.set_image(0, mask_image_view, (std::uint32_t)i, VK_IMAGE_LAYOUT_GENERAL, nullptr,
 			                 VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
 		}

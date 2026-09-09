@@ -1,5 +1,8 @@
 module;
 
+// Aligned operator new: see input_event_queue.ixx.
+#include <new>
+
 #include <hb.h>
 #include <hb-ft.h>
 #include <freetype/freetype.h>
@@ -586,7 +589,7 @@ private:
 
 		(void)primary_face.set_size(snapped_base_size);
 		FT_Load_Char(primary_face, FT_ULong{' '}, FT_LOAD_NO_HINTING);
-		const math::vec2 base_scale_factor = state_.default_font_size / snapped_base_size.as<float>();
+		const math::vec2 base_scale_factor = state_.default_font_size / snapped_base_size.template as<float>();
 
 		if(this->is_vertical()){
 			state_.default_ascender = state_.default_font_size.x / 2.f;

@@ -18,6 +18,7 @@ import mo_yanxi.static_string;
 import mo_yanxi.typesetting.util;
 import mo_yanxi.heterogeneous;
 import mo_yanxi.graphic.color;
+import mo_yanxi.tuple_manipulate;
 
 export
 constexpr bool operator==(const hb_feature_t& lhs, const hb_feature_t& rhs) noexcept{

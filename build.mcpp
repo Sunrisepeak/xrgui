@@ -194,8 +194,17 @@ int main() {
     //
     // First, because the scan that follows depends on one of them. See the
     // patch's own header for what each hunk is and why it is not upstream yet.
+    // Editing a patch has to re-run this program, or the tree keeps whatever the
+    // previous patch did and the change appears to have no effect. Declared
+    // BEFORE the calls so it is registered even on a run that applies nothing.
+    mcpp::rerun_if_changed_glob("mcpp/patches/*.patch");
+
     apply_patch(root / "external/mo_yanxi_vulkan_wrapper",
                 root / "mcpp/patches/mo_yanxi_vulkan_wrapper.patch");
+    // Nested inside the one above -- a submodule of a submodule, which is why it
+    // needs its own repo path rather than a second hunk in the same file.
+    apply_patch(root / "external/mo_yanxi_vulkan_wrapper/external/mo_yanxi_utility",
+                root / "mcpp/patches/mo_yanxi_utility.patch");
 
     // ---- upstream asset generators (xmake's xrgui.gen_icon / gen_slang) ----
     const bool have_python = have_tool("python");

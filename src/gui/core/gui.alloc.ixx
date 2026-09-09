@@ -118,12 +118,21 @@ struct heap_allocator : mi_heap_stl_allocator<T>{
     auto select_on_container_copy_construction() const { return *this; }
 
 
-    template<class T1, class T2>
-    friend bool operator==(const heap_allocator<T1>& lhs, const heap_allocator<T2>& rhs) noexcept{
-        return static_cast<const mi_heap_stl_allocator<T1>&>(lhs) == static_cast<const mi_heap_stl_allocator<T2>&>(rhs);
-    }
-
 };
+
+// Defined outside the class, and this is not a style choice.
+//
+// As a friend FUNCTION TEMPLATE written inside the class template, every
+// instantiation of heap_allocator<T> redefined the same operator==<T1, T2> --
+// so heap_allocator<std::byte> and heap_allocator<char> in one program are two
+// definitions of one function template. clang and GCC both reject it; MSVC
+// accepts it, which is why it survived.
+export
+template <class T1, class T2>
+bool operator==(const heap_allocator<T1>& lhs, const heap_allocator<T2>& rhs) noexcept{
+    return static_cast<const mi_heap_stl_allocator<T1>&>(lhs)
+        == static_cast<const mi_heap_stl_allocator<T2>&>(rhs);
+}
 
 export
 template <typename T = std::byte>
@@ -138,11 +147,17 @@ struct unvs_allocator : mi_stl_allocator<T>{
     template <class U> struct rebind { typedef unvs_allocator<U> other; };
     auto select_on_container_copy_construction() const { return *this; }
 
-    template<class T1, class T2>
-    friend bool operator==(const unvs_allocator<T1>& lhs, const unvs_allocator<T2>& rhs) noexcept{
-        return static_cast<const mi_stl_allocator<T1>&>(lhs) == static_cast<const mi_stl_allocator<T2>&>(rhs);
-    }
 };
+
+// Outside the class, for the same reason as heap_allocator's above: a friend
+// function TEMPLATE defined inside a class template is redefined by every
+// instantiation of it.
+export
+template <class T1, class T2>
+bool operator==(const unvs_allocator<T1>& lhs, const unvs_allocator<T2>& rhs) noexcept{
+    return static_cast<const mi_stl_allocator<T1>&>(lhs)
+        == static_cast<const mi_stl_allocator<T2>&>(rhs);
+}
 
 export
 template <typename T, std::size_t align>

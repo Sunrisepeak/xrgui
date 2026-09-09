@@ -343,7 +343,7 @@ jobs:
         with:
           path: |
             ~/.mcpp
-          key: mcpp-win-${{ env.MCPP_VER }}-${{ env.MCPP_MSVC_TOOLSET }}-${{ hashFiles('mcpp.toml', 'mcpp/**/mcpp.toml', 'build.mcpp') }}
+          key: mcpp-win-${{ env.MCPP_VER }}-${{ env.MCPP_MSVC_TOOLSET }}-${{ hashFiles('mcpp.toml', 'mcpp/**/mcpp.toml', 'mcpp/**/*.ixx', 'mcpp/patches/*.patch', 'build.mcpp') }}
 
       # Record what mcpp itself says it resolved, before the long build.
       #

@@ -80,6 +80,7 @@ import mo_yanxi.gui.cfg.builtin.constants;
 import mo_yanxi.gui.cfg.builtin.scene;
 import mo_yanxi.gui.i18n_loader;
 import mo_yanxi.platform;
+import mo_yanxi.views;
 
 
 namespace mo_yanxi::gui::cfg::builtin{
@@ -406,7 +407,7 @@ struct vp : gui::viewport{
 		auto ctx = get_scene().resources().object_pool.acquire<typesetting::layout_context>();
 		typesetting::tokenized_text txt;
 		typesetting::glyph_layout layout;
-		for(const auto& [tidx, body_info] : body_infos | std::views::enumerate){
+		for(const auto& [tidx, body_info] : body_infos | mo_yanxi::views::enumerate){
 			txt.reset(body_info.name);
 			ctx->layout(txt, {}, layout);
 
@@ -416,7 +417,7 @@ struct vp : gui::viewport{
 
 				for(const auto& [idx, val] : std::span{
 					    layout.elems.begin() + current_line.glyph_range.pos, current_line.glyph_range.size
-				    } | std::views::enumerate){
+				    } | mo_yanxi::views::enumerate){
 					if(!val.texture->view) continue;
 					auto start = math::fma(static_cast<float>(idx), spacing, line_src + val.aabb.src);
 					text_render_cache.push(graphic::g2d::rect_aabb{
@@ -823,7 +824,7 @@ ui_outputs build_main_ui(
 									math::vec2{150.f, 88.f},
 								};
 
-							for(const auto& [idx, size] : item_sizes | std::views::enumerate){
+							for(const auto& [idx, size] : item_sizes | mo_yanxi::views::enumerate){
 								auto tile = wrap.create_back([idx](label& l){
 									l.set_style(static_cast<style::family_variant>(idx % 5 + 1));
 									l.set_fit_type(label_fit_type::scl);
@@ -1534,7 +1535,7 @@ Edge Cases:
 	menu_hdl->get_button_pane().set_scroll_mode(scroll_pane_mode::proportional);
 
 	auto profile_test_entries = make_create_table();
-	for(const auto& [idx, creator] : profile_test_entries | std::views::enumerate){
+	for(const auto& [idx, creator] : profile_test_entries | mo_yanxi::views::enumerate){
 		const auto index = static_cast<std::size_t>(idx);
 		const auto creator_name = creator.name;
 		const auto i18n_path = example_menu_i18n_path(creator_name);

@@ -1,5 +1,8 @@
 module;
 
+// Aligned operator new: see input_event_queue.ixx.
+#include <new>
+
 #include <vulkan/vulkan.h>
 
 export module mo_yanxi.graphic.compositor.bloom;
@@ -8,6 +11,7 @@ import std;
 export import mo_yanxi.graphic.compositor.sub_pass;
 import mo_yanxi.vk;
 import mo_yanxi.math.vector2;
+import mo_yanxi.vk.util;
 
 namespace mo_yanxi::graphic::compositor{
 [[nodiscard]] constexpr std::uint32_t reverse_after(std::uint32_t value, std::uint32_t ceil) noexcept{

@@ -1,4 +1,7 @@
 module;
+
+// Aligned operator new: see input_event_queue.ixx.
+#include <new>
 // gch::small_vector_iterator's operator-(it, it) is a namespace-scope
 // template found by ADL, and mo_yanxi.typesetting.rich_text includes
 // small_vector in its global module fragment -- where a declaration the

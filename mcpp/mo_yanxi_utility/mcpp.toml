@@ -21,6 +21,20 @@ version = "0.1.0"
 module_extensions = [".ixx"]
 
 sources = [
+  # Two files this repository ADDS to the package rather than transcribes.
+  #
+  # They shim C++23 facilities libc++ has not shipped, and they live in the
+  # lowest package every other one depends on -- mo_yanxi_vulkan_wrapper needs
+  # them, xrgui needs them, and utility itself needs them (tile.ixx returns a
+  # stride/slide view). One copy, imported by all three, instead of the same
+  # fallback written once per layer.
+  #
+  # They are not upstream's, so they sit beside this manifest rather than in the
+  # submodule; when the shims are no longer needed both files are deleted and
+  # nothing else moves.
+  "views.ixx",
+  "functional.ixx",
+
   "../../external/mo_yanxi_vulkan_wrapper/external/mo_yanxi_utility/src/utility/**/*.ixx",
   "../../external/mo_yanxi_vulkan_wrapper/external/mo_yanxi_utility/src/latest/**/*.ixx",
   # upstream removes exactly this one file from the target

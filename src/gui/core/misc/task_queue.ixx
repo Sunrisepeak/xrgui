@@ -15,6 +15,7 @@ import mo_yanxi.concurrent.mpsc_queue;
 import mo_yanxi.allocator_aware_unique_ptr;
 import mo_yanxi.call_stream;
 import mo_yanxi.referenced_ptr;
+import mo_yanxi.functional;
 
 
 namespace mo_yanxi::gui{
@@ -749,15 +750,15 @@ struct associated_async_sync_task_queue_base{
 protected:
 	struct task_entry{
 		void* owner{};
-		std::move_only_function<bool(void*)> is_live;
-		std::move_only_function<void(void*)> func;
-		std::move_only_function<void()> keep_alive;
+		mo_yanxi::move_only_function<bool(void*)> is_live;
+		mo_yanxi::move_only_function<void(void*)> func;
+		mo_yanxi::move_only_function<void()> keep_alive;
 
 		[[nodiscard]] task_entry(
 			void* owner,
-			std::move_only_function<bool(void*)>&& is_live,
-			std::move_only_function<void(void*)>&& func,
-			std::move_only_function<void()>&& keep_alive)
+			mo_yanxi::move_only_function<bool(void*)>&& is_live,
+			mo_yanxi::move_only_function<void(void*)>&& func,
+			mo_yanxi::move_only_function<void()>&& keep_alive)
 			: owner(owner),
 			  is_live(std::move(is_live)),
 			  func(std::move(func)),
@@ -866,7 +867,12 @@ struct associated_async_sync_task_queue : associated_async_sync_task_queue_base{
 		});
 	}
 
-	using associated_async_sync_task_queue::merge;
+	// The base's merge, not this class's. Inside the class,
+	// `associated_async_sync_task_queue` is the injected-class-name and names
+	// THIS class, so the declaration referred to itself -- which clang rejects
+	// ("using declaration refers to its own class"). Line 840 above already
+	// spells the base correctly.
+	using associated_async_sync_task_queue_base::merge;
 
 };
 
@@ -875,7 +881,7 @@ export
 template <typename ...CtxArgs>
 struct async_sync_task_queue{
 private:
-	using func = std::move_only_function<void(CtxArgs...)>;
+	using func = mo_yanxi::move_only_function<void(CtxArgs...)>;
 	using container = mr::heap_vector<func>;
 	ccur::mpsc_double_buffer<func, container> async_tasks_{};
 	std::atomic_bool closed_{false};

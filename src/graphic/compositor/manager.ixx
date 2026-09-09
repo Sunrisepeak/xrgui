@@ -19,6 +19,7 @@ import mo_yanxi.vk.cmd;
 import mo_yanxi.vk.util;
 import mo_yanxi.log;
 import std;
+import mo_yanxi.views;
 
 
 namespace mo_yanxi::graphic::compositor{
@@ -1043,7 +1044,7 @@ private:
 		}
 
 
-		for (auto&& [i, current_pass] : execute_sequence_ | ranges::views::deref | std::views::enumerate) {
+		for (auto&& [i, current_pass] : execute_sequence_ | ranges::views::deref | mo_yanxi::views::enumerate) {
 			auto& inout_sockets = current_pass.sockets();
 			auto& resources = current_pass.get_used_resources(frame_slot);
 			auto& sync = current_pass.sync_info(frame_slot);
@@ -1712,14 +1713,14 @@ public:
 			intervals.push_back(interval);
 		};
 
-		for(auto&& [idx, life_bound] : life_bounds_ | std::views::enumerate){
+		for(auto&& [idx, life_bound] : life_bounds_ | mo_yanxi::views::enumerate){
 			if(life_bound.is_external()) continue;
 			auto span = get_maximum_region(life_bound.passed_by);
 			process_requirement(life_bound.resource_entity.overall_requirement, {span, &life_bound, nullptr});
 		}
 
 
-		for(const auto& [idx, local_entry] : life_bounds_.get_locals() | std::views::enumerate){
+		for(const auto& [idx, local_entry] : life_bounds_.get_locals() | mo_yanxi::views::enumerate){
 			auto req = local_entry.where->get_local_requirement(local_entry.target_slot);
 			if(local_entry.throughout_lifetime){
 				process_requirement(req, {execute_sequence_, nullptr, &local_entry, static_cast<std::size_t>(idx)});
@@ -1893,7 +1894,7 @@ public:
 		}
 
 
-		for(auto&& [idx, life_bound] : life_bounds_ | std::views::enumerate){
+		for(auto&& [idx, life_bound] : life_bounds_ | mo_yanxi::views::enumerate){
 			if(!life_bound.is_external()) continue;
 			for(const auto& passed_by : life_bound.passed_by){
 				if(!passed_by.where) continue;

@@ -120,7 +120,12 @@ public:
 	}
 };
 
-export inline void asset_group_deleter::operator()(asset_group* group) const noexcept{
+// No `export` here: this is the out-of-class DEFINITION of a member already
+// declared (and exported) with its class. A member definition is not a
+// namespace-scope declaration, and clang says so -- "cannot export
+// 'operator()' as it is not at namespace scope". Removing the keyword
+// changes nothing about visibility.
+inline void asset_group_deleter::operator()(asset_group* group) const noexcept{
 	delete group;
 }
 
@@ -171,8 +176,16 @@ public:
 		return groups_.contains(key);
 	}
 
+	// find-then-erase, not erase(key). The heterogeneous erase overload is
+	// P2077 (C++23) and libc++ has not shipped it, so `erase(string_view)` on a
+	// transparent-comparator map finds no candidate there. Heterogeneous FIND is
+	// P0919 (C++20) and is available, and the two together do exactly what the
+	// one-argument erase would -- without constructing a std::string to pass it.
 	bool erase(std::string_view key) noexcept{
-		return groups_.erase(key) > 0u;
+		const auto it = groups_.find(key);
+		if(it == groups_.end()) return false;
+		groups_.erase(it);
+		return true;
 	}
 
 	void clear() noexcept{
