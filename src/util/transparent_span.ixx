@@ -19,6 +19,30 @@ template <auto mptr>
 constexpr inline transparent_convert_t<typename mo_yanxi::mptr_info<decltype(mptr)>::value_type, typename
 	mo_yanxi::mptr_info<decltype(mptr)>::class_type, mptr> transparent_convert{};
 
+// Whether `mptr` is pointer-interconvertible with its class -- the property the
+// reinterpret_cast in transparent_span relies on.
+//
+// std::is_pointer_interconvertible_with_class is a library function over a
+// COMPILER builtin, and clang 22 has neither: __builtin_is_pointer_-
+// interconvertible_with_class is an undeclared identifier there, so no choice of
+// standard library supplies it (measured against both libc++ and libstdc++).
+// The macro is the one the standard specifies for it.
+//
+// Where it cannot be spelled it is not checked, and the constructors below stay
+// available. That is a real loss -- a layout the constraint would have rejected
+// is accepted instead -- but it is the position every implementation was in
+// before C++20, and the alternative is that this module does not compile at all
+// off MSVC. Stated as one constant rather than four #ifs so there is a single
+// place to delete when clang grows the builtin.
+export
+template <auto mptr>
+constexpr bool member_is_pointer_interconvertible =
+#if defined(__cpp_lib_is_pointer_interconvertible)
+	std::is_pointer_interconvertible_with_class(mptr);
+#else
+	true;
+#endif
+
 /**
  *
  * @warning THIS STRUCT's pointer usage is not satisfied with ISO C++ requirements
@@ -116,8 +140,16 @@ public:
     };
 
     using reverse_iterator = std::reverse_iterator<iterator>;
+
+    // std::const_iterator is P2278, which libc++ has not shipped -- it defines
+    // neither the alias nor std::basic_const_iterator, and the feature macro
+    // below is how the standard says to ask. Writing a local substitute would
+    // mean reimplementing basic_const_iterator, which is a lot of iterator
+    // boilerplate for four accessors that nothing in this repository calls.
+#if defined(__cpp_lib_ranges_as_const)
     using const_iterator = std::const_iterator<iterator>;
     using const_reverse_iterator = std::const_iterator<reverse_iterator>;
+#endif
 
 
     constexpr transparent_span() noexcept : data_(nullptr), size_(0){
@@ -136,7 +168,7 @@ public:
 
 
     template <std::ranges::contiguous_range Rng, std::remove_const_t<T> std::ranges::range_value_t<Rng>::* mptr>
-       requires (std::is_pointer_interconvertible_with_class(mptr) && sizeof(T) == sizeof(std::ranges::range_value_t<
+       requires (member_is_pointer_interconvertible<mptr> && sizeof(T) == sizeof(std::ranges::range_value_t<
              Rng>) &&
           std::ranges::borrowed_range<Rng>)
     explicit(false) constexpr transparent_span(Rng&& rng,
@@ -146,7 +178,7 @@ public:
 
 
     template <typename Ty, std::remove_const_t<T> std::remove_const_t<Ty>::* mptr>
-       requires (std::is_pointer_interconvertible_with_class(mptr) && sizeof(T) == sizeof(Ty))
+       requires (member_is_pointer_interconvertible<mptr> && sizeof(T) == sizeof(Ty))
     explicit(false) constexpr transparent_span(Ty& value, transparent_convert_t<std::remove_const_t<T>, std::remove_const_t<Ty>, mptr>) noexcept
        : data_(reinterpret_cast<T*>(std::addressof(value))), size_(1){
     }
@@ -173,10 +205,12 @@ public:
     constexpr reverse_iterator rbegin() const noexcept{ return reverse_iterator(end()); }
     constexpr reverse_iterator rend() const noexcept{ return reverse_iterator(begin()); }
 
+#if defined(__cpp_lib_ranges_as_const)
     constexpr const_iterator cbegin() const noexcept{ return const_iterator(begin()); }
     constexpr const_iterator cend() const noexcept{ return const_iterator(end()); }
     constexpr const_reverse_iterator crbegin() const noexcept{ return const_reverse_iterator(rbegin()); }
     constexpr const_reverse_iterator crend() const noexcept{ return const_reverse_iterator(rend()); }
+#endif
 
 
     constexpr reference front() const noexcept{
@@ -250,7 +284,7 @@ public:
 };
 
 template <std::ranges::contiguous_range Rng, auto mptr>
-	requires (std::is_pointer_interconvertible_with_class(mptr))
+	requires (member_is_pointer_interconvertible<mptr>)
 transparent_span(
 	Rng&&,
 	transparent_convert_t<typename mo_yanxi::mptr_info<decltype(mptr)>::value_type, std::ranges::range_value_t<Rng&&>,
@@ -259,7 +293,7 @@ transparent_span(
 		&&>>>>;
 
 template <typename Ty, auto mptr>
-	requires (std::is_pointer_interconvertible_with_class(mptr))
+	requires (member_is_pointer_interconvertible<mptr>)
 transparent_span(
 	Ty&, transparent_convert_t<typename mptr_info<decltype(mptr)>::value_type, std::remove_const_t<Ty>,mptr>) ->
 	transparent_span<std::remove_reference_t<std::invoke_result_t<decltype(mptr), Ty&>>>;

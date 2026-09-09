@@ -307,23 +307,11 @@ jobs:
           # because here it is a real pin.
           echo "MCPP_MSVC_TOOLSET=${{ env.MSVC_TOOLSET }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Apply submodule patch
-        shell: pwsh
-        run: |
-          # One hoisted import in mo_yanxi_vulkan_wrapper -- mcpp's M1 scanner
-          # rejects an import inside a conditional preprocessor block. See the
-          # patch header. Idempotent: skip when it is already applied.
-          #
-          # NOT a [scan_overrides] declaration: whether that import exists
-          # depends on __cpp_lib_stacktrace, so a fixed declaration is wrong on
-          # whichever compiler disagrees. The note in
-          # mcpp/mo_yanxi_vulkan_wrapper/mcpp.toml has the measurement.
-          $p = "$PWD\mcpp\patches\mo_yanxi_vulkan_wrapper.patch"
-          Push-Location external/mo_yanxi_vulkan_wrapper
-          git apply --check $p 2>$null
-          if ($LASTEXITCODE -eq 0) { git apply $p; Write-Host "patch applied" }
-          else { Write-Host "patch already applied, skipping" }
-          Pop-Location
+      # There used to be an "Apply submodule patch" step here. build.mcpp does it
+      # now, during prepare and therefore before the module scan that one of the
+      # hunks exists to satisfy. That is the same reason the asset generators
+      # live there: a step in this file fixes the tree for THIS job on THIS
+      # platform, and a local checkout -- or a Linux/macOS leg -- got nothing.
 
       # There used to be a "Strip UTF-8 BOMs from submodule module interfaces"
       # step here, deleting the three bytes from every .ixx/.cppm under

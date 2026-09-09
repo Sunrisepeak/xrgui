@@ -1,3 +1,34 @@
+Portability fixes for mo_yanxi_vulkan_wrapper, applied by build.mcpp.
+
+Both are upstream bugs rather than xrgui's, and both should go to
+Yuria-Shikibe/mo_yanxi_vulkan_wrapper; this file is what keeps the tree
+buildable until they do.
+
+1. stack_trace.cpp -- `import` hoisted out of `#if defined(__cpp_lib_stacktrace)`.
+   mcpp's M1 scanner rejects an import inside a conditional preprocessor block,
+   even an inactive one. Importing unconditionally is harmless: where the macro
+   is absent the import is simply unused.
+
+   NOT expressed as a `[scan_overrides]` declaration. That was tried, and mcpp's
+   audit rejected it for two reasons at once -- an implementation unit also
+   imports the module it belongs to, and whether meta_programming is imported at
+   all depends on the macro, so no single fixed declaration is true on both MSVC
+   and clang.
+
+2. util/exception.ixx -- three exception types moved from `std::exception` to
+   `std::runtime_error`.
+
+   `std::exception(const char*)` is an MSVC extension; the standard type has no
+   such constructor, so the file did not compile on clang or GCC at all. The
+   three `what()` overrides went with it: they only forwarded to the base, and
+   each was declared without `noexcept` over a `noexcept` base, which is itself
+   ill-formed ("exception specification of overriding function is more lax").
+
+   This also removes a real defect rather than only a portability one. The
+   argument was `msg.data()` on a `std::string_view`, which is not guaranteed
+   NUL-terminated -- so a view over part of a larger buffer produced a message
+   that ran past its end. runtime_error takes a std::string and copies it.
+
 diff --git a/src/vk_wrap/stack_trace.cpp b/src/vk_wrap/stack_trace.cpp
 index 795c514..3ce7b5e 100644
 --- a/src/vk_wrap/stack_trace.cpp
@@ -19,3 +50,59 @@ index 795c514..3ce7b5e 100644
  void mo_yanxi::print_stack_trace(std::ostream& ss, unsigned skip, const std::stacktrace& currentStacktrace){
  	std::println(ss, "Stack Trace: ");
  
+diff --git a/src/vk_wrap/util/exception.ixx b/src/vk_wrap/util/exception.ixx
+index 99ad0b5..6a2d965 100644
+--- a/src/vk_wrap/util/exception.ixx
++++ b/src/vk_wrap/util/exception.ixx
+@@ -7,43 +7,31 @@ export module mo_yanxi.vk.util:exception;
+ import std;
+ 
+ namespace mo_yanxi::vk{
+-	export struct vk_error final : std::exception{
++	export struct vk_error final : std::runtime_error{
+ 		[[nodiscard]] vk_error(const VkResult result, const std::string_view msg)
+-			: std::exception(msg.data()), result{result}{
++			: std::runtime_error{std::string{msg}}, result{result}{
+ 		}
+ 
+ 		VkResult result{};
+-
+-		[[nodiscard]] const char* what() const override{
+-			return std::exception::what();
+-		}
+ 	};
+ 
+-	export struct unqualified_error final : std::exception{
+-		[[nodiscard]] unqualified_error() : std::exception("Env/Device Disabled"){
++	export struct unqualified_error final : std::runtime_error{
++		[[nodiscard]] unqualified_error() : std::runtime_error{"Env/Device Disabled"}{
+ 
+ 		}
+ 
+ 		[[nodiscard]] unqualified_error(const std::string_view msg)
+-			: std::exception(msg.data()){
+-		}
+-
+-		[[nodiscard]] const char* what() const override{
+-			return std::exception::what();
++			: std::runtime_error{std::string{msg}}{
+ 		}
+ 	};
+ 
+-	struct ambiguous_error final : std::exception{
+-		[[nodiscard]] ambiguous_error() : std::exception("Ambiguous Setting"){
++	struct ambiguous_error final : std::runtime_error{
++		[[nodiscard]] ambiguous_error() : std::runtime_error{"Ambiguous Setting"}{
+ 
+ 		}
+ 
+ 		[[nodiscard]] ambiguous_error(const std::string_view msg)
+-			: std::exception(msg.data()){
+-		}
+-
+-		[[nodiscard]] const char* what() const override{
+-			return std::exception::what();
++			: std::runtime_error{std::string{msg}}{
+ 		}
+ 	};
+ }

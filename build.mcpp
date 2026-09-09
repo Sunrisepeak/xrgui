@@ -76,6 +76,43 @@ bool have_tool(std::string_view tool) {
     return std::system(probe.c_str()) == 0;
 }
 
+// Applies a patch to a checked-out submodule, idempotently.
+//
+// Here rather than as a CI step because that is what makes a local checkout and
+// CI take the same path -- the same reason the asset generators are here. A
+// step in one workflow file fixes the tree for one job on one platform; this
+// runs wherever `mcpp build` runs, which is what a Linux or macOS leg needs.
+//
+// build.mcpp runs during PREPARE, before the module scan, which is what lets a
+// patch that exists to satisfy the scanner work at all.
+//
+// `git apply --check` first: applying twice fails, and a developer who already
+// has the patch in their tree must not be told the build is broken. Failure to
+// apply a patch that --check accepted IS reported, because a half-patched tree
+// then fails somewhere with no connection to this.
+void apply_patch(const std::filesystem::path& repo, const std::filesystem::path& patch) {
+    if (!std::filesystem::exists(repo / ".git") || !std::filesystem::exists(patch)) return;
+
+    const auto check = std::format("git -C \"{}\" apply --check \"{}\" >{} 2>&1",
+                                   repo.string(), patch.string(),
+#ifdef _WIN32
+                                   "NUL"
+#else
+                                   "/dev/null"
+#endif
+    );
+    if (std::system(check.c_str()) != 0) {
+        note("{} already applied (or does not apply), skipping", patch.filename().string());
+        return;
+    }
+    const auto cmd = std::format("git -C \"{}\" apply \"{}\"", repo.string(), patch.string());
+    if (std::system(cmd.c_str()) != 0) {
+        note("ERROR: {} passed --check but failed to apply", patch.filename().string());
+        return;
+    }
+    note("applied {}", patch.filename().string());
+}
+
 // Runs a generator and reports failure loudly: a shader that silently failed to
 // compile turns into a missing file at runtime, which is much harder to trace.
 // Reports failure but does not stop the build. Two reasons: these generators
@@ -152,6 +189,13 @@ int main() {
         std::filesystem::path{mcpp::out_dir()} / ".assets/includes";
 
     std::filesystem::create_directories(out_dir);
+
+    // ---- submodule patches ------------------------------------------------
+    //
+    // First, because the scan that follows depends on one of them. See the
+    // patch's own header for what each hunk is and why it is not upstream yet.
+    apply_patch(root / "external/mo_yanxi_vulkan_wrapper",
+                root / "mcpp/patches/mo_yanxi_vulkan_wrapper.patch");
 
     // ---- upstream asset generators (xmake's xrgui.gen_icon / gen_slang) ----
     const bool have_python = have_tool("python");
