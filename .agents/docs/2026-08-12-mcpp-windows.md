@@ -317,6 +317,75 @@ managed 腿**不显式跑 `mcpp toolchain install`**。manifest 里的
 2. **改写 manifest 的那步必须自我断言。** 万一 `windows = "msvc@system"` 那行改了名或换了
    格式,替换会静默失效,managed 腿就变成 system 腿的副本 —— **照样绿,但什么都没证明**。
 
+
+### Linux 上跑起来:三个卡点,以及软件渲染为什么不算一条路
+
+Windows 之外第一次真正运行是在 Linux / clang 22 / libc++ 上,`xrgui_hello`
+由 RTX 4080 渲染。挡在前面的三件事,每一件的现场都和成因离得很远:
+
+**协程被两个对象同时拥有。** `~create_handle_base` 会 resume 未完成的协程再
+destroy 它。而 clang 存放协程返回对象的槽 `__coro_gro` **就在协程帧里面**,
+并且持有这个帧自己的句柄 —— gdb 在崩溃点打出
+`__coro_gro = {hdl = {handle = 0x7fff3af50050}}`,正是正在被拆的那个帧。于是
+destroy 帧 → 析构帧内的槽 → 槽的析构函数 resume 一个正在消失的协程。
+
+修法是让 `get_return_object()` 返回**裸 handle**:`std::coroutine_handle` 平凡
+可析构,槽里没有析构函数可跑,唯一所有者是调用方。
+
+期间两次误判都记在这里,因为它们花了真实的时间:先怪 clang 的 HALO 帧省略
+(句柄是栈地址,很像),后给 promise 加自定义 `operator new` 想阻止省略(无效,
+已撤回)。**两个帧根本不嵌套**,和省略无关。
+
+**一个没人用的必需扩展。** `VK_KHR_MAINTENANCE_9` 躺在必需设备扩展表里,四周
+全是注释掉的条目,而 `VkPhysicalDeviceMaintenance9Features` 全仓从未出现。它是
+Vulkan 1.4 时代的扩展,这台机器上没有任何设备支持(4080 / 驱动 550.144.03 到
+maintenance6;Mesa 25.2.8 的 llvmpipe 到 8)。设备筛选拒绝了全部候选,程序无窗
+退出 —— 为一个从未调用过的能力。
+
+**窗口先于内容显示。** GLFW 创建即映射,而首帧要等约 650ms(Vulkan 设备创建、
+资产加载、UI 线程启动都在中间)。合成器下这就是一块透明矩形突然填上。改为
+`GLFW_VISIBLE=false` + 首帧后 `show()`;实测映射状态从 `IsUnMapped` 变
+`IsViewable` 发生在首帧之后。
+
+#### 软件渲染(lavapipe)不是备选路径
+
+索引里的 `mesa-lavapipe 26.2.1` 确实提供 `maintenance9`,设备能选中、资产能加载,
+但呈现失败:
+
+```
+X Error: BadDrawable   Major opcode 149 (DRI3)  Minor 4 (FenceFromFD)
+```
+
+用 `LD_PRELOAD` 拦截 `xcb_dri3_fence_from_fd` 拿到了参数:
+
+```
+drawable=0xb600012  fence=0xb600013     而窗口是 0xb60000b
+```
+
+**那个 drawable 不是窗口,是 Mesa 自己创建的 pixmap**(fence 是紧接的下一个 id)。
+BadDrawable 意味着那个 pixmap 压根没建成:lavapipe 走 DRI3 把缓冲交给 X 服务器,
+而这台机器的 X 服务器由 NVIDIA 专有驱动驱动,导入不了。这是 **lavapipe ↔ NVIDIA
+X server 的互操作限制**,不是 xrgui 也不是 mcpp 的问题 —— 同一个 lavapipe 跑
+vkcube 完全正常。
+
+绕开的办法是让 Mesa 不走 DRI3:
+
+```
+MESA_VK_WSI_DEBUG=buffer    # BadDrawable 归零,实测
+```
+
+注意 `MESA_VK_WSI_DEBUG=sw` 在 Mesa 26 上**不是合法值**,设了等于没设 —— 合法的
+是 `throttle` / `blit` / `buffer` / `dxgi` / `noshm`,从 `libvulkan_lvp.so` 的
+字符串里读出来的。
+
+即便如此这条路仍不通:换成 `buffer` 后崩在退出路径的
+`assert(is_on_scene_thread(*this))` 上,那是另一个问题。真 GPU 两个症状都没有。
+
+顺带澄清一条噪音:lavapipe 下会打 25 条 `libunwind: bad fde: FDE is really a CIE`,
+只在它 JIT 编译着色器时出现,且只对链接了本工具链 LLVM libunwind 的二进制。
+**它无害** —— 在加载 lavapipe 前后各抛接一次异常都正常。vkcube(gcc / libgcc
+展开器)驱动同一个 lavapipe 一条都不打。这两件事**没有已知的因果关系**。
+
 ## 对应关系
 
 | xmake.lua | mcpp |
