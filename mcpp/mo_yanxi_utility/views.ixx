@@ -47,6 +47,16 @@
 
 module;
 
+// <version> for the __cpp_lib_* feature-test macros below.
+//
+// They are PREPROCESSOR macros and `import std;` does not define them --
+// a module exports no macros. Without this header every #if below is
+// false on every compiler, so the fallback is chosen even where the
+// library has the real thing, and the shim silently stops being a shim.
+// That is exactly what happened: MSVC took the local enumerate and its
+// forward+sized requirement rejected a std::stacktrace.
+#include <version>
+
 export module mo_yanxi.views;
 
 import std;
