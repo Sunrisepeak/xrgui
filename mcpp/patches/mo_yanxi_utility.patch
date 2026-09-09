@@ -275,6 +275,22 @@ index cc460f5..523d7ff 100644
  		return static_cast<Ty>(std::forward_like<S>(self.val));
  	}
  };
+diff --git a/src/utility/generic/function_manipulate.ixx b/src/utility/generic/function_manipulate.ixx
+index a1d7a71..f34fad6 100644
+--- a/src/utility/generic/function_manipulate.ixx
++++ b/src/utility/generic/function_manipulate.ixx
+@@ -139,7 +139,10 @@ consteval bool has_valid_subset_mapping(){
+ 			>{};
+ 		}(std::make_index_sequence<N>{});
+ 
+-		return []<std::size_t... Is>(std::index_sequence<Is...>) constexpr {
++		// `indices` is captured. A lambda with no capture-default cannot capture
++		// implicitly, and passing an index_sequence by value odr-uses it even
++		// though the type carries all the information.
++		return [indices]<std::size_t... Is>(std::index_sequence<Is...>) constexpr {
+ 			return ((count_passable_matches<std::tuple_element_t<Is, SubArgsTuple>, FullTuple>() == 1) && ...)
+ 			    && has_unique_indices(indices);
+ 		}(std::make_index_sequence<N>{});
 diff --git a/src/utility/math/basic/interpolation.ixx b/src/utility/math/basic/interpolation.ixx
 index 9b96115..943c778 100644
 --- a/src/utility/math/basic/interpolation.ixx

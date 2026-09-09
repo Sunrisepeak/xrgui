@@ -154,6 +154,21 @@ examples = { sources = ["src.examples/**/*.ixx", "src.examples/**/*.cpp",
                         "!src.examples/main.cpp"] }
 tests    = { sources = ["src.tests/**/*.cpp", "!src.tests/main.cpp"] }
 
+# The Linux desktop dependencies. A feature rather than a plain entry because
+# mcpp has no platform-conditional [dependencies] table -- [target.<pred>] takes
+# six keys and none of them is one -- and freedesktop.fontconfig's index recipe
+# has a `linux` section only, so an unconditional declaration does not resolve
+# on Windows.
+#
+# src/platform/font.ixx calls FcInitLoadConfigAndFonts and friends under
+# `#elif defined(__linux__)`; without this the link ends in undefined Fc*
+# symbols. The package comes from the index rather than the host, which is the
+# whole point of not writing `-lfontconfig` here.
+linux-desktop = {}
+
+[feature-deps.linux-desktop]
+freedesktop.fontconfig = "2.15.0"
+
 [feature-deps.tests]
 compat.gtest = "1.17.0"
 

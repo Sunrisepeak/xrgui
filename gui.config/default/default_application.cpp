@@ -40,6 +40,7 @@ import mo_yanxi.typesetting.rich_text;
 
 import mo_yanxi.platform;
 import mo_yanxi.log;
+import mo_yanxi.vk.util;
 
 namespace mo_yanxi::gui::cfg{
 namespace{

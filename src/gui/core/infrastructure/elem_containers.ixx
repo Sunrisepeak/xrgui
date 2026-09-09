@@ -41,9 +41,19 @@ public:
 		return **data_.insert(data_.begin() + where, raw);
 	}
 
-	[[nodiscard]] elem_ptr extract(std::size_t where) noexcept requires requires(Container& c){
-		{ c.erase(c.begin()) } noexcept;
-	}{
+	// The requirement is that erasing cannot throw, and `{ c.erase(...) } noexcept`
+	// is the wrong way to ask: std::vector::erase is not marked noexcept by the
+	// standard, so only an implementation that adds the specifier satisfies it --
+	// MSVC's does, libc++'s does not, and extract() then disappears with
+	// "constraints not satisfied".
+	//
+	// What actually makes vector::erase non-throwing is that shifting the tail
+	// cannot throw, so ask that instead. For every container used here the value
+	// type is `elem*`, which is trivially move-assignable.
+	[[nodiscard]] elem_ptr extract(std::size_t where) noexcept
+		requires requires(Container& c){ c.erase(c.begin()); }
+		      && std::is_nothrow_move_assignable_v<typename Container::value_type>
+	{
 		elem_ptr p{data_[where]};
 		data_.erase(data_.begin() + where);
 		return p;

@@ -127,11 +127,17 @@ struct heap_allocator : mi_heap_stl_allocator<T>{
 // so heap_allocator<std::byte> and heap_allocator<char> in one program are two
 // definitions of one function template. clang and GCC both reject it; MSVC
 // accepts it, which is why it survived.
+// is_equal, not ==, and for the same reason aligned_heap_allocator below already
+// does it that way: mimalloc's operator== for these allocators is declared in
+// mimalloc.h, which this module reaches through its GLOBAL MODULE FRAGMENT. A
+// GMF declaration is not visible where this template is instantiated from
+// another translation unit, and clang says so -- "invalid operands to binary
+// expression ('const mi_heap_stl_allocator<...>' and the same)". The member is
+// part of the class and travels with it.
 export
 template <class T1, class T2>
 bool operator==(const heap_allocator<T1>& lhs, const heap_allocator<T2>& rhs) noexcept{
-    return static_cast<const mi_heap_stl_allocator<T1>&>(lhs)
-        == static_cast<const mi_heap_stl_allocator<T2>&>(rhs);
+    return lhs.is_equal(rhs);
 }
 
 export
@@ -152,11 +158,15 @@ struct unvs_allocator : mi_stl_allocator<T>{
 // Outside the class, for the same reason as heap_allocator's above: a friend
 // function TEMPLATE defined inside a class template is redefined by every
 // instantiation of it.
+// Always equal, which is what mimalloc's own operator== for mi_stl_allocator
+// returns unconditionally -- it allocates from the shared heap, so any two
+// instances can free each other's memory. Written out rather than delegated,
+// because that operator== lives in the global module fragment; see the note on
+// heap_allocator above.
 export
 template <class T1, class T2>
-bool operator==(const unvs_allocator<T1>& lhs, const unvs_allocator<T2>& rhs) noexcept{
-    return static_cast<const mi_stl_allocator<T1>&>(lhs)
-        == static_cast<const mi_stl_allocator<T2>&>(rhs);
+bool operator==(const unvs_allocator<T1>&, const unvs_allocator<T2>&) noexcept{
+    return true;
 }
 
 export

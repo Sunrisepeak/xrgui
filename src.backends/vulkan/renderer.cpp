@@ -346,7 +346,7 @@ bool renderer::command_recording_context::apply_section_state_(
 				cache_clear_attachments_.push_back({
 						.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
 						.colorAttachment = i,
-						.clearValue = param
+						.clearValue = {.color = param}
 					});
 			});
 			VkClearRect rect{

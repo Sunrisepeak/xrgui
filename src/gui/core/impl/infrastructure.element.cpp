@@ -1,5 +1,15 @@
 module;
 
+// <gch/small_vector.hpp> in this unit's own global module fragment.
+//
+// It is already included by the module interface, but gch declares
+// operator== / operator!= for small_vector_iterator as NAMESPACE-SCOPE
+// templates rather than hidden friends -- and a declaration in another
+// translation unit's global module fragment is not visible here. A range-for
+// over a small_vector then fails on its `begin != end`, with candidates listed
+// from entirely unrelated headers.
+#include <gch/small_vector.hpp>
+
 #include <cassert>
 
 module mo_yanxi.gui.infrastructure;

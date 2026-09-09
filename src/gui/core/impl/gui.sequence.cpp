@@ -5,6 +5,7 @@ module;
 module mo_yanxi.gui.elem.sequence;
 
 import mo_yanxi.views;
+import mo_yanxi.math;
 
 
 namespace mo_yanxi::gui{

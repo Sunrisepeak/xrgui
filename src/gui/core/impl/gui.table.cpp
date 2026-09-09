@@ -7,6 +7,7 @@ module;
 module mo_yanxi.gui.elem.table;
 
 import mo_yanxi.views;
+import mo_yanxi.math;
 
 
 
