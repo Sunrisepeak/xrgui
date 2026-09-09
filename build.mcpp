@@ -113,6 +113,42 @@ void apply_patch(const std::filesystem::path& repo, const std::filesystem::path&
     note("applied {}", patch.filename().string());
 }
 
+// The executable for a package declared in [xlings.workspace], or "" when the
+// project did not declare one.
+//
+// mcpp delivers each declared package's payload directory as
+// MCPP_XPKG_<NAME>_DIR, and taking the executable from THERE is what makes this
+// immune to the two ways a PATH lookup lied on this project:
+//
+//   * `python` on a Linux box is often Python 2 (2.7.18 here) while the scripts
+//     are Python 3. The lookup succeeded and the script died on a SyntaxError.
+//   * `slangc` on PATH was an xlings shim for a package another project had
+//     declared. `command -v` succeeded; running it printed "slangc is not
+//     installed in this subos" and exited non-zero.
+//
+// Both failures were silent -- run_generator writes to a stderr mcpp echoes
+// only when this program exits non-zero -- and both ended as an application
+// linked with no shaders, crashing at startup in createShaderModule.
+//
+// Falls back to a bare name so a checkout that has not provisioned the
+// environment still behaves as it did before, rather than not running at all.
+std::string xpkg_tool(std::string_view env_name, std::string_view exe) {
+    const char* dir = std::getenv(env_name.data());
+    if (dir == nullptr || *dir == '\0') return std::string{exe};
+
+    for (const char* sub : {"bin", ""}) {
+        auto candidate = std::filesystem::path{dir} / sub / exe;
+#ifdef _WIN32
+        candidate.replace_extension(".exe");
+#endif
+        std::error_code ec;
+        if (std::filesystem::exists(candidate, ec)) {
+            return candidate.string();
+        }
+    }
+    return std::string{exe};
+}
+
 // Runs a generator and reports failure loudly: a shader that silently failed to
 // compile turns into a missing file at runtime, which is much harder to trace.
 // Reports failure but does not stop the build. Two reasons: these generators
@@ -222,25 +258,16 @@ int main() {
 
     // ---- upstream asset generators (xmake's xrgui.gen_icon / gen_slang) ----
     //
-    // `python3` first, and this is not a style preference. Both generator
-    // scripts are Python 3, and on a Linux system where `python` still exists it
-    // is very often Python 2 -- this machine's is 2.7.18. Calling that produced
-    //
-    //     SyntaxError: Non-ASCII character '\xe5' ... no encoding declared
-    //
-    // and the failure was INVISIBLE: run_generator only writes to stderr, which
-    // mcpp echoes when this program exits non-zero, and it does not. The build
-    // then linked an application with no compiled shaders, which failed at
-    // startup in createShaderModule -- a crash with no connection to the cause.
-    //
-    // CI never sees it because xlings installs a `python` that is Python 3.
-    // NOTE: a tool that RESOLVES is not a tool that WORKS. xlings installs shims
-    // on PATH for packages declared by OTHER projects; running one prints
-    // "slangc is not installed in this subos" and exits non-zero. have_tool()
-    // sees the shim and says yes, run_generator() reports the failure to a
-    // stderr nobody reads, and the build links an app with no shaders.
-    const std::string python =
-        have_tool("python3") ? "python3" : (have_tool("python") ? "python" : "");
+    // Both tools come from [xlings.workspace] when the project declared it --
+    // see the note on xpkg_tool, and the one in mcpp.toml. `python3` before
+    // `python` is the fallback ordering for a checkout that has not provisioned
+    // the environment: the scripts are Python 3 and a bare `python` frequently
+    // is not.
+    std::string python = xpkg_tool("MCPP_XPKG_PYTHON_DIR", "python3");
+    if (python == "python3" && !have_tool("python3")) {
+        python = have_tool("python") ? "python" : "";
+    }
+    const std::string slangc = xpkg_tool("MCPP_XPKG_SLANG_DIR", "slangc");
     const bool have_python = !python.empty();
 
     const auto icons_in = root / "properties/assets_raw/icons";
@@ -258,12 +285,12 @@ int main() {
     }
 
     const auto shader_cfg = root / "properties/assets_raw/shader/config.toml";
-    if (have_python && have_tool("slangc") && std::filesystem::exists(shader_cfg)) {
+    if (have_python && std::filesystem::exists(shader_cfg)) {
         const auto script = root / "properties/build_util/slang_builder.py";
         if (std::filesystem::exists(script)) {
             const auto cmd = std::format(
-                "{} \"{}\" slangc \"{}\" \"{}\" -j 30 --oneshot",
-                python, script.string(),
+                "{} \"{}\" \"{}\" \"{}\" \"{}\" -j 30 --oneshot",
+                python, script.string(), slangc,
                 (root / "properties/assets/shader/spv").string(),
                 shader_cfg.string());
             run_generator("compiling slang shaders", cmd);

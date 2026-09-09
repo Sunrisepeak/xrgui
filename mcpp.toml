@@ -224,6 +224,33 @@ libraries = [
 # "move vswhere.exe aside" step.
 windows = "msvc@system"
 
+# ── The build's tools ──────────────────────────────────────────────────────
+#
+# build.mcpp runs two Python generators, one of which drives slangc. Both used
+# to be found by probing PATH, and that cost real time twice on one machine:
+#
+#   * `python` there is 2.7.18 and the scripts are Python 3, so the generator
+#     died on a SyntaxError -- silently, because build.mcpp reports a failed
+#     generator to a stderr mcpp only echoes when the program exits non-zero.
+#     The build then linked an application with no shaders, which crashed at
+#     startup in createShaderModule.
+#
+#   * `slangc` resolved to an xlings shim declared by a DIFFERENT project.
+#     `command -v` said yes; running it said "slangc is not installed in this
+#     subos" and exited non-zero. Same silence, same end.
+#
+# Declaring them makes the versions a property of the project rather than of
+# whichever machine builds it: mcpp provisions them on first build and delivers
+# each one's directory as MCPP_XPKG_<NAME>_DIR, which build.mcpp uses in
+# preference to any PATH lookup. A shim cannot be in front of that, and there is
+# no `python` on any machine that is the wrong Python.
+[xlings]
+subos = "default"
+
+[xlings.workspace]
+"xim:python" = "3.13.12"
+"xim:slang"  = "2026.14.1"
+
 [profile.release]
 opt   = 2
 debug = true          # matches xmake's set_symbols("debug", "embed")
