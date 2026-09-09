@@ -56,9 +56,8 @@ env:
   # the runtime contract hash as `ucrt@<version>` there, which cost one cold
   # rebuild.
   #
-  # 2026.9.9.1 additionally deleted two steps from this job: the submodule
-  # patch (now a `[scan_overrides]` declaration) and the BOM strip (mcpp
-  # consumes the mark itself). Both are described where they used to be.
+  # 2026.9.9.1 additionally deleted the BOM strip from this job -- mcpp consumes
+  # the mark itself. It is described where it used to be.
   MCPP_VER: 2026.9.9.1
 
 # Only `push` on master and `pull_request`. Listing the feature branch under
@@ -308,13 +307,23 @@ jobs:
           # because here it is a real pin.
           echo "MCPP_MSVC_TOOLSET=${{ env.MSVC_TOOLSET }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      # There used to be an "Apply submodule patch" step here, hoisting one
-      # `import` out of a `#if` in mo_yanxi_vulkan_wrapper so mcpp's M1 scanner
-      # would accept the file. It is now declared instead, as a
-      # `[scan_overrides]` entry in mcpp/mo_yanxi_vulkan_wrapper/mcpp.toml --
-      # the escape hatch mcpp provides for exactly this shape. mcpp audits the
-      # declaration against the compiler's own P1689 scan on every build, so it
-      # cannot silently drift from the source it describes.
+      - name: Apply submodule patch
+        shell: pwsh
+        run: |
+          # One hoisted import in mo_yanxi_vulkan_wrapper -- mcpp's M1 scanner
+          # rejects an import inside a conditional preprocessor block. See the
+          # patch header. Idempotent: skip when it is already applied.
+          #
+          # NOT a [scan_overrides] declaration: whether that import exists
+          # depends on __cpp_lib_stacktrace, so a fixed declaration is wrong on
+          # whichever compiler disagrees. The note in
+          # mcpp/mo_yanxi_vulkan_wrapper/mcpp.toml has the measurement.
+          $p = "$PWD\mcpp\patches\mo_yanxi_vulkan_wrapper.patch"
+          Push-Location external/mo_yanxi_vulkan_wrapper
+          git apply --check $p 2>$null
+          if ($LASTEXITCODE -eq 0) { git apply $p; Write-Host "patch applied" }
+          else { Write-Host "patch already applied, skipping" }
+          Pop-Location
 
       # There used to be a "Strip UTF-8 BOMs from submodule module interfaces"
       # step here, deleting the three bytes from every .ixx/.cppm under
