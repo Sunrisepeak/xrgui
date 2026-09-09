@@ -221,15 +221,35 @@ int main() {
                 root / "mcpp/patches/mo_yanxi_utility.patch");
 
     // ---- upstream asset generators (xmake's xrgui.gen_icon / gen_slang) ----
-    const bool have_python = have_tool("python");
+    //
+    // `python3` first, and this is not a style preference. Both generator
+    // scripts are Python 3, and on a Linux system where `python` still exists it
+    // is very often Python 2 -- this machine's is 2.7.18. Calling that produced
+    //
+    //     SyntaxError: Non-ASCII character '\xe5' ... no encoding declared
+    //
+    // and the failure was INVISIBLE: run_generator only writes to stderr, which
+    // mcpp echoes when this program exits non-zero, and it does not. The build
+    // then linked an application with no compiled shaders, which failed at
+    // startup in createShaderModule -- a crash with no connection to the cause.
+    //
+    // CI never sees it because xlings installs a `python` that is Python 3.
+    // NOTE: a tool that RESOLVES is not a tool that WORKS. xlings installs shims
+    // on PATH for packages declared by OTHER projects; running one prints
+    // "slangc is not installed in this subos" and exits non-zero. have_tool()
+    // sees the shim and says yes, run_generator() reports the failure to a
+    // stderr nobody reads, and the build links an app with no shaders.
+    const std::string python =
+        have_tool("python3") ? "python3" : (have_tool("python") ? "python" : "");
+    const bool have_python = !python.empty();
 
     const auto icons_in = root / "properties/assets_raw/icons";
     if (have_python && std::filesystem::is_directory(icons_in)) {
         const auto script = root / "properties/assets_raw/svg_normalize.py";
         if (std::filesystem::exists(script)) {
             const auto cmd = std::format(
-                "python \"{}\" -i \"{}\" -o \"{}\"",
-                script.string(), icons_in.string(),
+                "{} \"{}\" -i \"{}\" -o \"{}\"",
+                python, script.string(), icons_in.string(),
                 (root / "properties/assets_raw/gen/icons").string());
             run_generator("normalizing icons", cmd);
         }
@@ -242,8 +262,8 @@ int main() {
         const auto script = root / "properties/build_util/slang_builder.py";
         if (std::filesystem::exists(script)) {
             const auto cmd = std::format(
-                "python \"{}\" slangc \"{}\" \"{}\" -j 30 --oneshot",
-                script.string(),
+                "{} \"{}\" slangc \"{}\" \"{}\" -j 30 --oneshot",
+                python, script.string(),
                 (root / "properties/assets/shader/spv").string(),
                 shader_cfg.string());
             run_generator("compiling slang shaders", cmd);
