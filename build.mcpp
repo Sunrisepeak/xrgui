@@ -194,10 +194,24 @@ int main() {
     //
     // First, because the scan that follows depends on one of them. See the
     // patch's own header for what each hunk is and why it is not upstream yet.
+    // Two triggers, and the second is not redundant.
+    //
     // Editing a patch has to re-run this program, or the tree keeps whatever the
-    // previous patch did and the change appears to have no effect. Declared
-    // BEFORE the calls so it is registered even on a run that applies nothing.
+    // previous patch did and the change appears to have no effect.
+    //
+    // So does the submodule sources CHANGING UNDER US -- `git checkout` inside a
+    // submodule reverts the patch, and a cached build.mcpp then does not
+    // re-apply it. The build fails somewhere unrelated (for the hunk that exists
+    // to satisfy the module scanner, at scan time) with no hint that a patch went
+    // missing. CI never sees this because it checks out fresh; a developer does.
+    //
+    // Declared BEFORE the calls so both are registered even on a run that
+    // applies nothing.
     mcpp::rerun_if_changed_glob("mcpp/patches/*.patch");
+    mcpp::rerun_if_changed_glob("external/mo_yanxi_vulkan_wrapper/src/**/*.ixx");
+    mcpp::rerun_if_changed_glob("external/mo_yanxi_vulkan_wrapper/src/**/*.cpp");
+    mcpp::rerun_if_changed_glob(
+        "external/mo_yanxi_vulkan_wrapper/external/mo_yanxi_utility/src/**/*.ixx");
 
     apply_patch(root / "external/mo_yanxi_vulkan_wrapper",
                 root / "mcpp/patches/mo_yanxi_vulkan_wrapper.patch");
