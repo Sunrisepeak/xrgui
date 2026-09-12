@@ -423,7 +423,7 @@ int main() {
 }
 ```
 
-379 行(原 480)。没有了:`have_tool`、`stage-runtime-data`、vulkan-1 搜索、slang
+374 行(原 480;多出来的是注释,记录 CI 上量到的东西)。没有了:`have_tool`、`stage-runtime-data`、vulkan-1 搜索、slang
 生成器、`-j 30`。mcpp.toml 没有了:`linux-desktop`、三个包的系统库副本、
 `xim:slang`。CI 没有了:`xlings install node python slang`、spv 断言、三个工具的
 PATH 检查。
@@ -546,6 +546,17 @@ mcpplibs/mcpp-index#402(三个包的 `runtime.libraries`)。
     C2672 加 `<end Parse>`,改成 `#if defined(__clang__)`。
 14. **上游 xmake 的 `build` job 今天也红**,原因是它的 Setup Slang 步骤用匿名 GitHub
     API 查 latest release,撞了 runner IP 的限流;与本 PR 无关,重跑即可。
+
+**简洁性自查**(CI 全绿后通读 `mcpp.toml`、`build.mcpp`、两个 workflow):
+
+- `build.mcpp` 里剩下的每一块都是 mcpp 没有对应键的事:submodule 补丁、图标归一化
+  和 bin2c、一次规则调用、两个打包成员的声明。没有 shell 分叉、没有 PATH 探测、
+  没有依赖机器状态的路径。可以再删的只有注释里对旧着色器流程的叙述,已删。
+- `mcpp.toml` 全是数据;唯一「聪明」的地方是带约束的 glob 加四条排除,替代方案是
+  逐个列 16 个文件,更长不更清楚,保留。
+- 两个 workflow 各只装一样东西(mcpp),其余由 manifest 供给;断言只剩「图标存在」
+  和「工具链是钉的那个」,都是 mcpp 自己说不出口的事。
+- 没做的:把图标也交给插件(§4.3 的理由不变)。
 
 尚未定的:LTO、`bmi_schedule`。`bmi_schedule` 在本机量了一次,**读数无效**:
 `mcpp clean` 只清 `target/`,全局构建缓存仍然把绝大多数目标文件直接交回来

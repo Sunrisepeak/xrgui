@@ -67,9 +67,9 @@ void note(std::format_string<Args...> fmt, Args&&... args) {
 // Applies a patch to a checked-out submodule, idempotently.
 //
 // Here rather than as a CI step because that is what makes a local checkout and
-// CI take the same path -- the same reason the asset generators are here. A
-// step in one workflow file fixes the tree for one job on one platform; this
-// runs wherever `mcpp build` runs, which is what a Linux or macOS leg needs.
+// CI take the same path -- the same reason the icon generator is here. A step
+// in one workflow file fixes the tree for one job on one platform; this runs
+// wherever `mcpp build` runs, which is what a Linux or macOS leg needs.
 //
 // build.mcpp runs during PREPARE, before the module scan, which is what lets a
 // patch that exists to satisfy the scanner work at all.
