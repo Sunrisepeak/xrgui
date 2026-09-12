@@ -1,13 +1,16 @@
 // Build-time codegen for xrgui under mcpp -- what is left after mcpp itself
 // took over most of what this file used to do.
 //
-// Three things happen here, in this order:
+// Four things happen here, in this order:
 //
 //   1. Submodule patches. Applied idempotently before the module scan, because
 //      one hunk exists to satisfy the scanner. mcpp has no mechanism for this;
 //      the patches' real home is the upstream repositories.
 //
-//   2. Icons. One `source` action per file under properties/assets_raw/icons,
+//   2. On macOS only, one private include directory: mcpp/darwin shadows the
+//      SDK's assert() (see the header there).
+//
+//   3. Icons. One `source` action per file under properties/assets_raw/icons,
 //      running mcpp/svg_outline (built by mcpp as a host tool): the stroked
 //      icon becomes a filled one and lands as a byte list at
 //      MCPP_OUT_DIR/.assets/includes/<rel>.svg.h, to be #include'd INSIDE a
@@ -20,7 +23,7 @@
 //      The set of icons is known here, so the summary is complete at prepare
 //      time; the bytes arrive when the edges run, before any compile.
 //
-//   3. Shaders and distributables, both from mcpp:plugins. mcpp.rules.slang
+//   4. Shaders and distributables, both from mcpp:plugins. mcpp.rules.slang
 //      compiles every .slang the constrained glob in mcpp.toml routed here,
 //      one ninja edge each, and generates xrgui.shaders.h -- the accessors
 //      render_context.cpp and the showcase main.cpp call under
@@ -173,6 +176,13 @@ int main() {
     // needs its own repo path rather than a second hunk in the same file.
     apply_patch(root / "external/mo_yanxi_vulkan_wrapper/external/mo_yanxi_utility",
                 root / "mcpp/patches/mo_yanxi_utility.patch");
+
+    // ---- macOS: assert() without the branch hint ---------------------------
+    //
+    // Clang 22 calls the SDK assert()'s __builtin_expect ambiguous across
+    // module imports; mcpp/darwin/assert.h says how and shadows it. Private
+    // to this package: a consumer's own units are not touched.
+    if (std::string_view{mcpp::target_os()} == "macos") mcpp::include_dir("mcpp/darwin");
 
     // ---- icons: one action each through mcpp/svg_outline --------------------
     //

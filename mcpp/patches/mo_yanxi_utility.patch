@@ -10,6 +10,11 @@ reimplemented because nothing in this submodule and nothing in xrgui names
 either alias, so a local basic_const_iterator would be iterator boilerplate with
 no caller.
 
+rect_ortho.ixx -- two four-lane SSE comparisons get a scalar `#else`, and the
+<immintrin.h> include is guarded on the same predicate instruction.general.ixx
+uses. The file included x86 intrinsics unconditionally, which is what stopped
+the macOS (arm64) build; the SSE path is unchanged where it exists.
+
 Everything else routes standard-but-unshipped facilities through the
 mo_yanxi.views / mo_yanxi.functional shims that mcpp/mo_yanxi_utility adds
 beside this package's manifest:
@@ -312,3 +317,58 @@ index 9b96115..943c778 100644
  #endif
  
  export
+diff --git a/src/utility/math/basic/rect_ortho.ixx b/src/utility/math/basic/rect_ortho.ixx
+index a57776e..e0181a7 100644
+--- a/src/utility/math/basic/rect_ortho.ixx
++++ b/src/utility/math/basic/rect_ortho.ixx
+@@ -1,7 +1,10 @@
+ module;
+ 
+ #include <cassert>
++#if defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 1) || defined(__SSE__)
++#define MO_YANXI_RECT_ORTHO_HAS_SSE 1
+ #include <immintrin.h>
++#endif
+ #include "mo_yanxi/adapted_attributes.hpp"
+ 
+ export module mo_yanxi.math.rect_ortho;
+@@ -470,6 +473,7 @@ public:
+ 				// 构造比较向量：
+ 				// vec1 = [a_src_x, a_src_y, b_src_x, b_src_y]
+ 				// vec2 = [b_end_x, b_end_y, a_end_x, a_end_y]
++#if defined(MO_YANXI_RECT_ORTHO_HAS_SSE)
+ 				__m128 vec1 = _mm_set_ps(b_src_y, b_src_x, a_src_y, a_src_x);
+ 				__m128 vec2 = _mm_set_ps(a_end_y, a_end_x, b_end_y, b_end_x);
+ 
+@@ -481,6 +485,12 @@ public:
+ 
+ 				// 检查所有四个条件是否均满足（掩码为0b1111）
+ 				return (mask == 0x0F);
++#else
++				// The same four lane-wise comparisons, written out for targets
++				// without SSE (arm64).
++				return a_src_x < b_end_x && a_src_y < b_end_y
++				    && b_src_x < a_end_x && b_src_y < a_end_y;
++#endif
+ 			}
+ 		}
+ 
+@@ -510,6 +520,7 @@ public:
+ 				// 构造比较向量：
+ 				// vec1 = [a_src_x, a_src_y, b_src_x, b_src_y]
+ 				// vec2 = [b_end_x, b_end_y, a_end_x, a_end_y]
++#if defined(MO_YANXI_RECT_ORTHO_HAS_SSE)
+ 				__m128 vec1 = _mm_set_ps(b_src_y, b_src_x, a_src_y, a_src_x);
+ 				__m128 vec2 = _mm_set_ps(a_end_y, a_end_x, b_end_y, b_end_x);
+ 
+@@ -521,6 +532,10 @@ public:
+ 
+ 				// 检查所有四个条件是否均满足（掩码为0b1111）
+ 				return (mask == 0x0F);
++#else
++				return a_src_x <= b_end_x && a_src_y <= b_end_y
++				    && b_src_x <= a_end_x && b_src_y <= a_end_y;
++#endif
+ 			}
+ 		}
+ 
