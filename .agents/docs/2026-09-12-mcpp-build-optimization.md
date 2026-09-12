@@ -520,6 +520,33 @@ mcpplibs/mcpp-index#402(三个包的 `runtime.libraries`)。
    `bin/assets/*`、`vk_layer_settings.txt`、`HOST-REQUIREMENTS`;AppImage 产出在
    `target/.build-mcpp/out/xrgui-x86_64.AppImage`。
 
+**CI 上又发现的五件事**(本地 Linux 全绿之后,Windows 两条腿和 Linux 腿各自暴露的):
+
+10. **Linux 腿的安装脚本要 `/dev/tty`**,runner 没有;`XLINGS_NON_INTERACTIVE=1`
+    是它自己的开关。装完 mcpp 后 SubOS 的 bin 不在 PATH 上,要再导出一次。
+11. **MSVC 14.52 拒绝 mcpp-plugins 0.7.0 的 host module**(36629 和 36725 都是):
+    `filesystem(1572): error C2801: '_Path_iterator<...>::operator ==' must be a
+    non-static member`,STL 自己的 hidden friend。三轮探针定位:去掉规则里的
+    `lexically_normal` 没用,去掉 `lexically_relative` 也没用,`declare.cppm`
+    同样的 import 集合却编过,它唯一的区别是不碰 `std::filesystem`。形状是
+    「lib 根的 BMI 里带着 `_Path_iterator` 的实例化,和 `import std` 一起进到一个
+    再碰 `path` 的单元」。修在 lib 根:路径拆成字符串比较。发布为
+    **mcpp-plugins 0.7.1**(#18,mcpp-index #403);0.7.0 在这个 toolset 上对任何
+    构建程序碰路径的消费者都不可用。中间用 `git = ... rev = ...` 指向修复 commit
+    做 CI 验证,再换回版本号 —— 注意 squash 合并并删分支后那个 rev 就 clone 不到了。
+12. **Windows 的 python 载荷是根目录下的 `python.exe`**,Linux 是 `bin/python3`。
+    删掉 PATH 回退之后这个差异才显形:图标没生成,`assets_summary.h` 为空,
+    `gui.assets.cpp` 每个 `svgs::icons::` 都报错。`xpkg_tool` 现在两个名字、两个
+    位置都找。
+13. **两处端口代码 MSVC 14.52 不接受**,而 Windows 腿自端口落地后一直是红的
+    (最后一次绿是 5006775,之前的红是 `xim:python` 当时没有 Windows 构建):
+    `renderer.cpp` 的 `.clearValue = {.color = param}` 改成直接取 union 成员
+    `param.vk`;`object_pool.ixx` 里为 clang 加的显式实例化
+    `template struct any_pool<...>` 让 MSVC 在 `label.ixx` 调用它的成员模板时报
+    C2672 加 `<end Parse>`,改成 `#if defined(__clang__)`。
+14. **上游 xmake 的 `build` job 今天也红**,原因是它的 Setup Slang 步骤用匿名 GitHub
+    API 查 latest release,撞了 runner IP 的限流;与本 PR 无关,重跑即可。
+
 尚未定的:LTO、`bmi_schedule`。`bmi_schedule` 在本机量了一次,**读数无效**:
 `mcpp clean` 只清 `target/`,全局构建缓存仍然把绝大多数目标文件直接交回来
 (off 25.3 s / on 27.1 s,但 on 的 CPU 时间翻倍,说明它量的是指纹变化带来的
