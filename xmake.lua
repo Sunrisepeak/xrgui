@@ -106,6 +106,15 @@ local function add_xrgui_core_deps()
     add_files("./src/**.cpp")
     add_files("./src/**.ixx", {public = true})
 
+    -- Two module interfaces this repository keeps beside its mcpp manifest:
+    -- mo_yanxi.views and mo_yanxi.functional shim the C++23 facilities libc++
+    -- has not shipped (views::stride / slide, move_only_function,
+    -- range_const_reference_t) and resolve to std:: where the library has
+    -- them, which MSVC's does. src/ has imported them since the Linux port,
+    -- so every build of xrgui needs them; the mcpp build gets them through
+    -- mcpp/mo_yanxi_utility/mcpp.toml.
+    add_files("./mcpp/mo_yanxi_utility/views.ixx", "./mcpp/mo_yanxi_utility/functional.ixx", {public = true})
+
     --add_cxflags("/wd4267", "/wd4244", "/wd4305", {tools = {"cl", "clang_cl"}})
 end
 
