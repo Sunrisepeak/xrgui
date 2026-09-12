@@ -1,0 +1,125 @@
+# Linux / clang CI for the mcpp build.
+#
+# The Windows job is the reference (xmake's own CI is MSVC-only); this one is
+# where the port to clang 22 / libc++ stays honest, and where anything the
+# build program does on every platform -- the Slang rule, the runtime deploy,
+# `mcpp pack` -- is exercised on the cheaper runner first.
+#
+# Everything comes through mcpp: the compiler is the `llvm@22.1.8` the
+# manifest pins, slang is declared by the rule, the icon tool is built from
+# this repository. This file installs one thing, mcpp, and asserts its version
+# because it is the thing under test.
+name: mcpp (Linux / clang)
+
+env:
+  # Kept in step with mcpp-windows.yml; the floors are documented there.
+  MCPP_VER: 2026.9.12.2
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: mcpp-linux-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-clang:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install xlings
+        # The installer reads from /dev/tty when its stdin is a pipe, which a
+        # runner has none of; XLINGS_NON_INTERACTIVE is its switch for that.
+        env:
+          XLINGS_NON_INTERACTIVE: "1"
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/openxlings/xlings/main/tools/other/quick_install.sh | bash
+          # The installer edits the shell profile; this step and the later
+          # ones need the directory on PATH now. Take whichever directory
+          # under ~/.xlings actually holds the executable.
+          found=$(find "$HOME/.xlings" -type f -name xlings -perm -u+x 2>/dev/null | head -5)
+          [ -n "$found" ] || { echo "xlings not found under ~/.xlings"; exit 1; }
+          for f in $found; do d=$(dirname "$f"); echo "adding to PATH: $d"; echo "$d" >> "$GITHUB_PATH"; export PATH="$d:$PATH"; done
+          xlings --version
+
+      - name: Install mcpp via xlings
+        run: |
+          xlings install mcpp@${{ env.MCPP_VER }}
+          # `install` leaves the requested version inactive when another one
+          # already holds the name; make it the active one and then check.
+          xlings use mcpp ${{ env.MCPP_VER }}
+          # Installed packages land in the SubOS bin, a different directory
+          # from the one xlings itself was found in above, and it did not exist
+          # when that step ran. Put it on PATH now; the real binary under
+          # data/xpkgs is the fallback if the shim directory is not there.
+          shim=$(find "$HOME/.xlings" -type f -name mcpp -perm -u+x -not -path '*/data/xpkgs/*' 2>/dev/null | head -1)
+          [ -n "$shim" ] || shim=$(find "$HOME/.xlings" -type f -name mcpp -perm -u+x 2>/dev/null | head -1)
+          [ -n "$shim" ] || { echo "mcpp not found under ~/.xlings"; exit 1; }
+          d=$(dirname "$shim"); echo "adding to PATH: $d"; echo "$d" >> "$GITHUB_PATH"; export PATH="$d:$PATH"
+          command -v mcpp
+          v=$(mcpp --version 2>&1); echo "$v"
+          case "$v" in *"${{ env.MCPP_VER }}"*) ;; *) echo "expected mcpp ${{ env.MCPP_VER }}"; exit 1;; esac
+
+      # No restore-keys: ~/.mcpp holds compiled artifacts whose validity
+      # depends on the manifest, and a loose prefix restore is how a stale
+      # std module reaches a build that has since changed flags.
+      - name: mcpp — cache registry and build artifacts
+        uses: actions/cache@v4
+        with:
+          path: ~/.mcpp
+          key: mcpp-linux-${{ env.MCPP_VER }}-${{ hashFiles('mcpp.toml', 'mcpp/**/mcpp.toml', 'mcpp/**/*.ixx', 'mcpp/patches/*.patch', 'build.mcpp') }}
+
+      # The manifest pins the toolchain; this is where a cold cache installs
+      # it, and the assertion is what catches a build about to run on the
+      # machine's gcc instead.
+      - name: Assert mcpp resolved the pinned toolchain
+        run: |
+          out=$(mcpp why toolchain 2>&1); echo "$out"
+          echo "$out" | grep -q 'llvm.*22\.1\.8\|clang.*22' || { echo "mcpp did not resolve llvm@22.1.8"; exit 1; }
+
+      - name: mcpp — build the library and xrgui_hello
+        run: mcpp build
+
+      - name: mcpp — build xrgui_example
+        run: mcpp build --features examples
+
+      - name: mcpp — build and run xrgui_tests
+        run: |
+          mcpp build --features tests
+          exe=$(find target -type f -name xrgui_tests | head -1)
+          [ -n "$exe" ] || { echo "xrgui_tests was not produced"; exit 1; }
+          echo "Running $exe"
+          "$exe"
+
+      # `--profile dev` so the pack reuses the build above rather than
+      # compiling the tree a second time under release; the artifact is a
+      # smoke-test bundle, not a release. The AppImage member declares
+      # appimagetool itself.
+      - name: mcpp — pack (vendored tarball and AppImage)
+        run: |
+          # Named: two bin targets are declared and only one is in this
+          # feature set, so a bare `mcpp pack` cannot settle on it.
+          mcpp pack --profile dev xrgui_hello
+          mcpp pack --profile dev --format appimage xrgui_hello
+          ls -la target/dist/
+          test -n "$(ls target/dist/*.tar.gz 2>/dev/null)"
+          test -n "$(find target -name '*.AppImage' | head -1)"
+
+      - name: Upload mcpp artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xrgui-mcpp-linux
+          path: |
+            target/dist/
+            target/**/*.AppImage
+          if-no-files-found: ignore
