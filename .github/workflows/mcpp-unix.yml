@@ -1,15 +1,15 @@
-# Linux / clang CI for the mcpp build.
+# Linux and macOS CI for the mcpp build, one job per host.
 #
-# The Windows job is the reference (xmake's own CI is MSVC-only); this one is
+# The Windows job is the reference (xmake's own CI is MSVC-only); these are
 # where the port to clang 22 / libc++ stays honest, and where anything the
 # build program does on every platform -- the Slang rule, the runtime deploy,
-# `mcpp pack` -- is exercised on the cheaper runner first.
+# `mcpp pack` -- is exercised on the cheaper runners first.
 #
 # Everything comes through mcpp: the compiler is the `llvm@22.1.8` the
-# manifest pins, slang is declared by the rule, the icon tool is built from
-# this repository. This file installs one thing, mcpp, and asserts its version
-# because it is the thing under test.
-name: mcpp (Linux / clang)
+# manifest configures for both hosts, slang is declared by the rule, the icon
+# tool is built from this repository. This file installs one thing, mcpp, and
+# asserts its version because it is the thing under test.
+name: mcpp (Linux and macOS / clang)
 
 env:
   # Kept in step with mcpp-windows.yml; the floors are documented there.
@@ -22,12 +22,23 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: mcpp-linux-${{ github.head_ref || github.ref }}
+  group: mcpp-unix-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  linux-clang:
-    runs-on: ubuntu-24.04
+  clang:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-clang
+            os: ubuntu-24.04
+          # macos-15 rather than -14: mcpp's own CI and mcpp-plugins measured a
+          # build program failing to link on 14 against the older libc++ dylib.
+          - name: macos-clang
+            os: macos-15
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 180
 
     steps:
@@ -76,7 +87,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.mcpp
-          key: mcpp-linux-${{ env.MCPP_VER }}-${{ hashFiles('mcpp.toml', 'mcpp/**/mcpp.toml', 'mcpp/**/*.ixx', 'mcpp/patches/*.patch', 'build.mcpp') }}
+          key: mcpp-${{ matrix.name }}-${{ env.MCPP_VER }}-${{ hashFiles('mcpp.toml', 'mcpp/**/mcpp.toml', 'mcpp/**/*.ixx', 'mcpp/patches/*.patch', 'build.mcpp') }}
 
       # The manifest pins the toolchain; this is where a cold cache installs
       # it, and the assertion is what catches a build about to run on the
@@ -103,8 +114,10 @@ jobs:
       # `--profile dev` so the pack reuses the build above rather than
       # compiling the tree a second time under release; the artifact is a
       # smoke-test bundle, not a release. The AppImage member declares
-      # appimagetool itself.
+      # appimagetool itself. Linux only: mcpp's built-in closure walk does not
+      # do Mach-O programs yet, and a `.app` is a separate member.
       - name: mcpp — pack (vendored tarball and AppImage)
+        if: matrix.os == 'ubuntu-24.04'
         run: |
           # Named: two bin targets are declared and only one is in this
           # feature set, so a bare `mcpp pack` cannot settle on it.
@@ -118,7 +131,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: xrgui-mcpp-linux
+          name: xrgui-mcpp-${{ matrix.name }}
           path: |
             target/dist/
             target/**/*.AppImage
