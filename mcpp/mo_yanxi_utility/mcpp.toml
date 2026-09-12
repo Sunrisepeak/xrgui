@@ -1,0 +1,48 @@
+# mcpp package for mo_yanxi.utility (external/mo_yanxi_vulkan_wrapper/external/mo_yanxi_utility).
+#
+# The manifest lives here rather than inside the submodule because that submodule
+# is a separate upstream repository. `sources` therefore reaches back out of tree;
+# once this is upstreamed the file moves to the submodule root and the
+# ../../../external/... prefixes drop away, nothing else changes.
+#
+# Everything below is transcribed from that repo's own xmake.lua, not invented:
+#
+#   add_includedirs("include", {public = true})              -> include_dirs
+#   add_files("./src/utility/**.ixx", {public = true})       -> sources
+#   remove_files(".../container/open_hash_map.ixx")          -> the "!" exclusion
+#   option("add_latest") set_default(true)  -> src/latest/**.ixx IS built
+#   option("add_legacy") set_default(false) -> src/legacy/**.ixx is NOT
+#   MO_YANXI_UTILITY_ENABLE_CHECK=0 on release
+[package]
+name    = "mo_yanxi_utility"
+version = "0.1.0"
+
+[build]
+module_extensions = [".ixx"]
+
+sources = [
+  # Two files this repository ADDS to the package rather than transcribes.
+  #
+  # They shim C++23 facilities libc++ has not shipped, and they live in the
+  # lowest package every other one depends on -- mo_yanxi_vulkan_wrapper needs
+  # them, xrgui needs them, and utility itself needs them (tile.ixx returns a
+  # stride/slide view). One copy, imported by all three, instead of the same
+  # fallback written once per layer.
+  #
+  # They are not upstream's, so they sit beside this manifest rather than in the
+  # submodule; when the shims are no longer needed both files are deleted and
+  # nothing else moves.
+  "views.ixx",
+  "functional.ixx",
+
+  "../../external/mo_yanxi_vulkan_wrapper/external/mo_yanxi_utility/src/utility/**/*.ixx",
+  "../../external/mo_yanxi_vulkan_wrapper/external/mo_yanxi_utility/src/latest/**/*.ixx",
+  # upstream removes exactly this one file from the target
+  "!../../external/mo_yanxi_vulkan_wrapper/external/mo_yanxi_utility/src/utility/container/open_hash_map.ixx",
+]
+
+include_dirs = [
+  "../../external/mo_yanxi_vulkan_wrapper/external/mo_yanxi_utility/include",
+]
+
+defines = ["MO_YANXI_UTILITY_ENABLE_CHECK=0"]

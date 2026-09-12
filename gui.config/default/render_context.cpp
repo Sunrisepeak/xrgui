@@ -1,6 +1,14 @@
 module;
 
 #include <vulkan/vulkan.h>
+// Under mcpp the shaders are compiled into the binary by mcpp.rules.slang and
+// reached through the surface it generates; the header lives in the build
+// output and declares one accessor per shader. A conditional #include in the
+// global module fragment is fine where a conditional `import` would not be:
+// the module scanner reads imports, not includes.
+#ifdef XRGUI_SHADER_SURFACE
+#include <xrgui.shaders.h>
+#endif
 
 module mo_yanxi.gui.cfg.render_context;
 
@@ -140,6 +148,29 @@ const VkApplicationInfo& prepare_config_for_context(render_context_config& confi
 	auto& shader_modules = bundle.shader_modules;
 	shader_modules.reserve(10);
 
+#ifdef XRGUI_SHADER_SURFACE
+	// The same ten shaders, from the arrays mcpp.rules.slang compiled in.
+	// `shader_spv_path` is unused on this path and deliberately kept in the
+	// signature so the two builds share one interface.
+	(void)shader_spv_path;
+	namespace sh = xrgui::shaders;
+	auto load = [&](const sh::payload& p) -> vk::shader_module& {
+		return shader_modules.emplace_back(ctx.get_device(),
+			std::span<const std::uint32_t>{p.code, p.size_bytes / sizeof(std::uint32_t)});
+	};
+	auto& draw_shader_vert = load(sh::ui::draw::vert());
+	auto& draw_shader_frag_basic = load(sh::ui::draw::frag_basic());
+	auto& draw_shader_frag_outlined = load(sh::ui::draw::frag_outlined());
+	auto& draw_shader_coord = load(sh::ui::draw::coord_draw());
+	auto& draw_shader_mask = load(sh::ui::draw::frag_mask());
+	auto& draw_shader_mask_apply = load(sh::ui::draw::frag_mask_apply());
+
+	auto& blit_shader_merge = load(sh::ui::blit::lane_merge());   // config.toml aliases this "ui/blit/basic"
+	auto& blit_shader_blend = load(sh::ui::blit::alpha_blend());
+	auto& blit_shader_inverse = load(sh::ui::blit::inverse());
+
+	auto& shader_instr_resolve = load(sh::ui::instruction_resolve_comp());
+#else
 	auto& draw_shader_vert = shader_modules.emplace_back(ctx.get_device(), shader_spv_path / "ui.draw.vert.spv");
 	auto& draw_shader_frag_basic = shader_modules.emplace_back(ctx.get_device(), shader_spv_path / "ui.draw.frag_basic.spv");
 	auto& draw_shader_frag_outlined = shader_modules.emplace_back(ctx.get_device(), shader_spv_path / "ui.draw.frag_outlined.spv");
@@ -152,6 +183,7 @@ const VkApplicationInfo& prepare_config_for_context(render_context_config& confi
 	auto& blit_shader_inverse = shader_modules.emplace_back(ctx.get_device(), shader_spv_path / "ui.blit.inverse.spv");
 
 	auto& shader_instr_resolve = shader_modules.emplace_back(ctx.get_device(), shader_spv_path / "ui.instruction_resolve_comp.spv");
+#endif
 
 	using namespace backend::vulkan;
 	bundle.create_info = renderer_create_info{

@@ -1,0 +1,188 @@
+# XRGUI under mcpp. A transcription of xmake.lua, not a redesign: where the two
+# disagree, this file is the one that is wrong. Windows / MSVC is the reference;
+# Linux builds with the clang pinned under [toolchain]. Needs mcpp 2026.9.12.2.
+
+[package]
+name        = "xrgui"
+version     = "0.1.0"
+description = "A GUI framework on C++23 modules and Vulkan"
+license     = "BSD-2-Clause"
+authors     = ["MoYanxi"]
+repo        = "https://github.com/Yuria-Shikibe/xrgui"
+
+[build]
+module_extensions = [".ixx"]            # MSVC spells module interfaces .ixx
+
+# The device axis: default_application.cpp asks for Vulkan 1.3, and the Slang
+# rule derives its SPIR-V profile from this. It also routes the glob below.
+accel = "vulkan1.3"
+
+sources = [
+  "src/**/*.ixx",                       "src/**/*.cpp",
+  "src.backends/universal/**/*.ixx",    "src.backends/universal/**/*.cpp",
+  "src.backends/vulkan/**/*.ixx",       "src.backends/vulkan/**/*.cpp",
+  "src.backends/vulkan_glfw/**/*.ixx",  "src.backends/vulkan_glfw/**/*.cpp",
+  "src.backends/miniaudio/**/*.ixx",    "src.backends/miniaudio/**/*.cpp",
+  "gui.config/**/*.ixx",                "gui.config/**/*.cpp",
+  "external/allocator2d/include/mo_yanxi/allocator2d.ixx",   # as xmake: in the target, not a library
+  "!src/vectorization_check.cpp",                              # a standalone -mavx512 probe
+
+  # The shaders, compiled into the binary by mcpp.rules.slang (one edge each).
+  # The entry points are the ones properties/assets_raw/shader/config.toml
+  # lists for xmake's gen_slang; lib/ holds modules they import, and
+  # bloom.merge.slang does not compile under slang 2026.14.1 (nothing loads it).
+  { glob = "properties/assets_raw/shader/slangs/**/*.slang", accel = "vulkan1.3" },
+  "!properties/assets_raw/shader/slangs/lib/**",
+  "!properties/assets_raw/shader/slangs/ui/ui_structs.slang",
+  "!properties/assets_raw/shader/slangs/ui/slide_line.slang",
+  "!properties/assets_raw/shader/slangs/post_process/bloom.merge.slang",
+]
+
+include_dirs = [
+  "external/include",                        # stb_image / beman::inplace_vector
+  "external/small_vector/source/include",    # <gch/small_vector.hpp>
+  "external/mo_yanxi_vulkan_wrapper/external/VulkanMemoryAllocator/include",
+  "mcpp/compat",                             # <nanosvg/nanosvg.h>, see [generated_files]
+]
+
+# /MD, as xmake's set_runtimes("MD"). Spelled out because on MSVC this key
+# selects the CRT model: "self-contained" would be /MT, a different model.
+cxx_runtime = "host-coupled"
+
+defines = [
+  "MO_YANXI_ALLOCATOR_2D_USE_STD_MODULE",
+  "MO_YANXI_ALLOCATOR_2D_HAS_MATH_VECTOR2",
+  "MO_YANXI_DATA_FLOW_DISABLE_THREAD_CHECK",
+  # compat.miniaudio compiles miniaudio.c itself; audio.cpp must not do it again.
+  "XRGUI_MINIAUDIO_IMPL_PROVIDED",
+  # compat.msdfgen is built without MSDFGEN_USE_CPP11; msdf.{cpp,ixx} must agree.
+  "XRGUI_MSDFGEN_NO_CPP11",
+  # The shaders are reached through the generated xrgui.shaders.h, not loaded
+  # from .spv files. render_context.cpp and the showcase main.cpp switch on it.
+  "XRGUI_SHADER_SURFACE",
+]
+
+# Runtime data beside the executable (xmake's after_build copy). The program
+# looks these up relative to its working directory; `mcpp pack` stages them
+# at the same relative place.
+[runtime]
+deploy_files = ["properties/vk_layer_settings.txt"]
+deploy = [
+  { from = "properties/assets/font/SourceHanSansCN-Regular.otf", to = "assets/font" },
+  { from = "properties/assets/images/logo.png",                  to = "assets/images" },
+  { from = "properties/assets/markdown/preview.md",              to = "assets/markdown" },
+  { from = "properties/assets/test.csv",                         to = "assets" },
+]
+
+# Windows executable icon and version block (from [package]); nothing elsewhere.
+[resources]
+icon = "properties/assets/images/xrgui.ico"
+
+# xrepo's nanosvg installs its headers one directory deeper than upstream, and
+# this repo writes <nanosvg/nanosvg.h>; two forwarding headers keep both builds
+# reading the same source.
+[generated_files]
+"mcpp/compat/nanosvg/nanosvg.h" = """
+#pragma once
+#include <nanosvg.h>
+"""
+"mcpp/compat/nanosvg/nanosvgrast.h" = """
+#pragma once
+#include <nanosvgrast.h>
+"""
+
+# The three path entries are this repo's submodules, packaged under mcpp/;
+# the rest correspond one-to-one with xmake.lua's add_requires().
+[dependencies]
+mo_yanxi_utility        = { path = "mcpp/mo_yanxi_utility" }
+mo_yanxi_vulkan_wrapper = { path = "mcpp/mo_yanxi_vulkan_wrapper" }
+mo_yanxi_react_flow     = { path = "mcpp/mo_yanxi_react_flow" }
+
+compat.glfw           = "3.4"
+compat.freetype       = "2.13.3"
+compat.vulkan         = "1.4.357.0"     # pulls compat.vulkan-headers
+compat.harfbuzz       = "14.3.0"
+compat.msdfgen        = "1.13"
+compat.mimalloc       = "3.4.5"
+compat.miniaudio      = "0.11.25"
+compat.nanosvg        = "2026.07.09"
+compat.spirv-reflect  = "1.4.357.0"     # same SDK line as compat.vulkan
+compat.gtl            = "1.2.0"
+compat.plf-hive       = "2026.07.31"
+marzer.tomlplusplus   = "3.4.0"
+# The package rather than the submodule: its scan override covers the
+# conditional `import std;` in magic_enum.cppm that the module scanner rejects.
+neargye.magic_enum    = "0.9.8"
+
+# Build-time only, never linked. Compiled into build.mcpp as host modules:
+#   rules-slang    .slang -> SPIR-V, embedded; it declares xim:slang itself
+#   dist-appimage  `mcpp pack --format appimage` (Linux)
+#   dist-wix       `mcpp pack --format msi` (Windows, WiX 6 on PATH)
+# 0.7.1: MSVC 14.52 refuses 0.7.0's host modules (C2801 in <filesystem>).
+[build-dependencies.mcpp]
+plugins = { version = "0.7.1", features = ["rules-slang", "dist-appimage", "dist-wix"], host-module = true }
+
+# The icon tool: a stroked SVG becomes a filled one. Built by mcpp for the
+# build machine; build.mcpp runs it once per icon. See mcpp/svg_outline.
+[build-dependencies]
+svg_outline = { path = "mcpp/svg_outline", tools = ["svg-outline"] }
+
+# GUI programs: no console window on Windows. Nothing changes elsewhere.
+[targets.xrgui_hello]
+kind              = "bin"
+main              = "src.hello/main.cpp"
+windows_subsystem = "windows"
+
+[targets.xrgui_example]
+kind              = "bin"
+main              = "src.examples/main.cpp"
+required_features = ["examples"]
+windows_subsystem = "windows"
+
+# A feature-gated binary rather than mcpp's tests/** discovery: xmake's
+# xrgui.tests links a hand-picked subset of src/. CI runs it directly.
+[targets.xrgui_tests]
+kind              = "bin"
+main              = "src.tests/main.cpp"
+required_features = ["tests"]
+
+[features]
+default  = []
+examples = { sources = ["src.examples/**/*.ixx", "src.examples/**/*.cpp",
+                        "!src.examples/main.cpp"] }
+tests    = { sources = ["src.tests/**/*.cpp", "!src.tests/main.cpp"] }
+
+[feature-deps.tests]
+compat.gtest = "1.17.0"
+
+# Linux only (the index recipe has no other platform): src/platform/font.ixx
+# calls fontconfig under __linux__.
+[target.linux.dependencies.freedesktop]
+fontconfig = "2.15.0"
+
+# xmake: add_cxflags("/bigobj") + set_encodings("utf-8").
+[target.windows.build]
+cxxflags = ["/bigobj", "/utf-8"]
+
+# xmake's add_syslinks. `libraries`, not `ldflags`: a GNU `-luser32` reaches
+# link.exe verbatim and is dropped with LNK4044, surfacing as unresolved
+# externals at the end. The index packages spell theirs the same way.
+[target.windows.runtime]
+libraries = ["advapi32", "imm32", "ole32", "shell32", "user32"]
+
+[toolchain]
+# The Visual Studio VSINSTALLDIR names (the CI image's release-channel 14.51
+# ICEs on this codebase; the job exports the preview toolset's vcvars).
+windows = "msvc@system"
+# The Linux port was done against this payload; pinned so every machine
+# builds with the same compiler.
+linux   = "llvm@22.1.8"
+
+# The project's environment. No tools are declared: the icon tool is built
+# from this repository and slang comes with its rule.
+[xlings]
+subos = "default"
+
+[profile.release]
+opt   = 2
+debug = true          # matches xmake's set_symbols("debug", "embed")
