@@ -195,7 +195,8 @@ neargye.magic_enum    = "0.9.8"
 #   dist-wix       `mcpp pack --format msi`      (Windows; WiX 6 located on PATH)
 # The rule declares `xim:slang` itself, gated on the vulkan accelerator above.
 [build-dependencies.mcpp]
-plugins = { version = "0.7.0", features = ["rules-slang", "dist-appimage", "dist-wix"], host-module = true }
+# TEMPORARY: the fix for MSVC 14.52 (C2801 in _Path_iterator) under CI test; becomes version = "0.7.1".
+plugins = { git = "https://github.com/mcpp-community/mcpp-plugins.git", rev = "b493d29fb0ca4f6570e2404f6c23596718b81f5d", features = ["rules-slang", "dist-appimage", "dist-wix"], host-module = true }
 
 # ── Targets ────────────────────────────────────────────────────────────────
 # GUI programs: no console window on Windows (`/SUBSYSTEM:WINDOWS`, the
