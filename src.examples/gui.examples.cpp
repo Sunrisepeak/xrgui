@@ -48,6 +48,10 @@ import mo_yanxi.typesetting.util;
 import mo_yanxi.font;
 import mo_yanxi.font.manager;
 import mo_yanxi.graphic.color;
+// clang requires the modules a name comes from to be imported here; MSVC let
+// them through via another import's reachability.
+import mo_yanxi.math.interpolation;
+import mo_yanxi.math.matrix3;
 import mo_yanxi.graphic.msdf;
 import align;
 
