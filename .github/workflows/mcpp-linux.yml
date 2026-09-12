@@ -57,6 +57,14 @@ jobs:
           # `install` leaves the requested version inactive when another one
           # already holds the name; make it the active one and then check.
           xlings use mcpp ${{ env.MCPP_VER }}
+          # Installed packages land in the SubOS bin, a different directory
+          # from the one xlings itself was found in above, and it did not exist
+          # when that step ran. Put it on PATH now; the real binary under
+          # data/xpkgs is the fallback if the shim directory is not there.
+          shim=$(find "$HOME/.xlings" -type f -name mcpp -perm -u+x -not -path '*/data/xpkgs/*' 2>/dev/null | head -1)
+          [ -n "$shim" ] || shim=$(find "$HOME/.xlings" -type f -name mcpp -perm -u+x 2>/dev/null | head -1)
+          [ -n "$shim" ] || { echo "mcpp not found under ~/.xlings"; exit 1; }
+          d=$(dirname "$shim"); echo "adding to PATH: $d"; echo "$d" >> "$GITHUB_PATH"; export PATH="$d:$PATH"
           command -v mcpp
           v=$(mcpp --version 2>&1); echo "$v"
           case "$v" in *"${{ env.MCPP_VER }}"*) ;; *) echo "expected mcpp ${{ env.MCPP_VER }}"; exit 1;; esac
