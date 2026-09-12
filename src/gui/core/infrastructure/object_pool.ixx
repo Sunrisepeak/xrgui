@@ -285,6 +285,20 @@ public:
 //
 // scene.ixx holds the only specialisation this project uses. A second one would
 // fail the same way and want its own line; that is why the failure is loud.
+//
+// CLANG ONLY. MSVC 14.52 has the opposite problem with this line: once the
+// specialisation is explicitly instantiated in this interface, an importer
+// calling its member template -- label.ixx's
+// `object_pool.acquire<typesetting::layout_context>()` -- gets
+//
+//   error C2672: 'any_pool<...>::acquire': no matching overloaded function found
+//   note: syntax error: '<end Parse>'
+//
+// while without the line MSVC compiled this tree. Measured on 14.52.36629 and
+// 14.52.36725 (xrgui CI). The line exists for a clang defect, so it is
+// compiled for clang.
+#if defined(__clang__)
 template struct any_pool<false, mr::unvs_allocator<std::byte>>;
+#endif
 
 }
