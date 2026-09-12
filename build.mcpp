@@ -45,20 +45,22 @@ import mcpp.dist.wix;
 
 namespace {
 
-// Diagnostics go to stderr rather than stdout, because stdout is this program's
-// directive stream and a stray line there is at best ignored.
+// Diagnostics go to STDOUT, as whole lines that do not start with `mcpp:`,
+// which the directive parser ignores by contract.
 //
-// Do not expect to SEE these during a healthy build. mcpp captures stdout and
-// stderr merged, parses the result for directives, and echoes it only when this
-// program exits non-zero or times out. Anything a user must see on a build that
-// SUCCEEDED goes through mcpp::warning instead, which mcpp prints and replays
-// on cache hits.
+// Not stderr, and that was measured. mcpp reads stdout and stderr through one
+// merged pipe, so an unbuffered stderr line can land INSIDE a buffered
+// directive line: on the Windows runner, forty `mcpp:action=` directives
+// followed by one note to stderr arrived as a JSON payload cut off at
+// `...build-cach` with the note spliced in, and mcpp refused the build with
+// "declared a malformed action". One stream, one order.
 //
-// std::cerr and not stderr: `stderr` is a macro from <cstdio>, and macros do
-// not come through `import std`.
+// Do not expect to SEE these during a healthy build: mcpp echoes what it
+// captured only when this program exits non-zero or times out. Anything a
+// user must see on a build that SUCCEEDED goes through mcpp::warning.
 template <typename... Args>
 void note(std::format_string<Args...> fmt, Args&&... args) {
-    std::println(std::cerr, "build.mcpp: {}", std::format(fmt, std::forward<Args>(args)...));
+    std::println("build.mcpp: {}", std::format(fmt, std::forward<Args>(args)...));
 }
 
 // Applies a patch to a checked-out submodule, idempotently.
