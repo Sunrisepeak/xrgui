@@ -21,12 +21,12 @@ git submodule update --init --recursive
 xmake quickstart
 ```
 
-最小应用代码从 `src.hello/main.cpp` 开始；完整 GUI 使用说明见：
+最小应用代码从 `templates/hello/src/main.cpp` 开始；完整 GUI 使用说明见：
 
 - `properties/showcase/quick_start.md`
 - `properties/showcase/user_guide.md`
 
-完整 showcase 目标是 `xrgui.example`，源码入口为 `src.examples/main.cpp` 和 `src.examples/gui.examples.cpp`。
+完整 showcase 目标是 `xrgui.example`，源码入口为 `templates/showcase/src/main.cpp` 和 `src.examples/gui.examples.cpp`。
 
 ## 架构分层
 
@@ -37,7 +37,7 @@ xmake quickstart
 | Compound | `src/gui/compound/` | 复合控件，如拾色器、文件选择器、数据表格 |
 | Default Config | `gui.config/default/` | 默认应用封装、默认样式、字体、内置资源 |
 | Backends | `src.backends/` | 通用 main loop、Vulkan renderer、GLFW 窗口适配 |
-| Examples | `src.hello/`, `src.examples/` | 最小示例和完整 showcase |
+| Examples | `templates/hello/`, `templates/showcase/`, `src.examples/` | 最小示例和完整 showcase；两个入口同时是 mcpp 的项目模板 |
 
 ## 关键源码入口
 

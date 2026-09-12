@@ -71,32 +71,30 @@ XRGUI 暂时不适合：
 
 ## 快速运行
 
+### 用 mcpp（Windows / Linux / macOS）
+
+机器上只需要 [mcpp](https://github.com/mcpp-community/mcpp) 本身：编译器、Vulkan、Slang 和每一个第三方库都按 `mcpp.toml` 的配置自动提供。
+
+```bash
+git submodule update --init --recursive
+mcpp run xrgui_hello                                    # 最小示例
+mcpp run --features examples --release xrgui_example    # 完整 showcase
+mcpp run --features tests xrgui_tests                   # 单元测试
+mcpp new myapp --template xrgui:hello                   # 从模板起新项目（或 xrgui:showcase；需 xrgui 已发布到索引）
+```
+
+### 用 xmake（Windows / MSVC）
+
+需要 Visual Studio 2026 预览版、Vulkan SDK、Python、Node 和 slangc；`xmake doctor` 检查环境。
+
 ```powershell
 git submodule update --init --recursive
-xmake quickstart
+xmake quickstart                                        # 配置、生成资产、构建并启动 xrgui.hello
+xmake -b xrgui.example && xmake run xrgui.example       # 完整 showcase
+xmake -b xrgui.tests   && xmake run xrgui.tests         # 单元测试
 ```
 
-`quickstart` 会配置 MSVC debug 构建，按需生成 shader/icon，运行 `xmake doctor`，构建并启动最小示例 `xrgui.hello`。
-
-只检查环境：
-
-```powershell
-xmake doctor
-```
-
-运行完整 showcase：
-
-```powershell
-xmake -b xrgui.example
-xmake run xrgui.example
-```
-
-运行单元测试：
-
-```powershell
-xmake -b xrgui.tests
-xmake run xrgui.tests
-```
+> 注：两条构建链构建同一棵源码树，产物等价。差异、平台支持和生成资产的去向见[构建与开发说明](docs/build-and-development.md)。
 
 ## 能力速览
 

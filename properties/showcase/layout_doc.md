@@ -223,6 +223,6 @@ flip->switch_to(0);
 
 实际示例优先参考：
 
-- `src.hello/main.cpp`
+- `templates/hello/src/main.cpp`
 - `src.examples/gui.examples.cpp`
 - [user_guide.md](user_guide.md)

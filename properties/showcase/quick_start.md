@@ -32,7 +32,7 @@ xmake run xrgui.example
 
 ## 推荐入口
 
-第一次接入使用 `mo_yanxi.gui.cfg.default_application`，继承后实现 `build_gui(scene, root)`。最小示例见 `src.hello/main.cpp`，集中说明见 [用户指南：推荐入口](user_guide.md#2-推荐入口default_application)。
+第一次接入使用 `mo_yanxi.gui.cfg.default_application`，继承后实现 `build_gui(scene, root)`。最小示例见 `templates/hello/src/main.cpp`，集中说明见 [用户指南：推荐入口](user_guide.md#2-推荐入口default_application)。
 
 ## 常见错误
 

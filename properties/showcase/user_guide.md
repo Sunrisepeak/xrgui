@@ -23,7 +23,7 @@ xmake -b xrgui.example
 xmake run xrgui.example
 ```
 
-`xrgui.hello` 是最小 GUI 接入示例，源码在 `src.hello/main.cpp`。`xrgui.example` 是完整 showcase，包含 compositor、后处理、markdown、CSV、复杂控件和演示页面，不建议作为第一次接入时的最小模板。
+`xrgui.hello` 是最小 GUI 接入示例，源码在 `templates/hello/src/main.cpp`。`xrgui.example` 是完整 showcase，包含 compositor、后处理、markdown、CSV、复杂控件和演示页面，不建议作为第一次接入时的最小模板。
 
 ## 2. 推荐入口：default_application
 
@@ -409,7 +409,7 @@ scene.get_communicator()->request_clipboard(my_edit, [](gui::text_edit& edit, st
 
 | 文件 | 内容 |
 |------|------|
-| `src.hello/main.cpp` | 最小 `default_application` 示例 |
+| `templates/hello/src/main.cpp` | 最小 `default_application` 示例 |
 | `gui.config/default/default_application.ixx` | 默认应用公开 API 与 Doxygen 注释 |
 | `src/gui/core/layout/policy.ixx` | layout policy、size category、runtime restriction |
 | `src/gui/core/layout/cell.ixx` | Cell builder API |

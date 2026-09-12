@@ -18,7 +18,7 @@ Core API 的详细说明应写在相邻源码声明的 `/** */` Doxygen 注释�
 
 - 新增或改变 public API 时，在声明附近补充 `/** */` Doxygen 注释。
 - Markdown 文档只保留使用路径和索引，不复制长段实现说明。
-- 文档与代码冲突时，以当前代码和 `src.hello` / `src.examples` 实际使用为准。
+- 文档与代码冲突时，以当前代码和 `templates/hello` / `src.examples` 实际使用为准。
 
 ## 待整理方向
 
