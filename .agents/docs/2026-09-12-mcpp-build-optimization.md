@@ -520,4 +520,8 @@ mcpplibs/mcpp-index#402(三个包的 `runtime.libraries`)。
    `bin/assets/*`、`vk_layer_settings.txt`、`HOST-REQUIREMENTS`;AppImage 产出在
    `target/.build-mcpp/out/xrgui-x86_64.AppImage`。
 
-尚未量的:LTO、`bmi_schedule`。按第 6 步的说法各量一次再决定,不随本次改动。
+尚未定的:LTO、`bmi_schedule`。`bmi_schedule` 在本机量了一次,**读数无效**:
+`mcpp clean` 只清 `target/`,全局构建缓存仍然把绝大多数目标文件直接交回来
+(off 25.3 s / on 27.1 s,但 on 的 CPU 时间翻倍,说明它量的是指纹变化带来的
+缓存未命中,不是调度)。要量真的冷构建得 `[build] cache = "off"` 跑两遍,放在
+CI 绿之后单独做。LTO 在 MSVC 上只能在 CI 量。两者都不随本次改动开启。
