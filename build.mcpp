@@ -114,18 +114,27 @@ void apply_patch(const std::filesystem::path& repo, const std::filesystem::path&
 // PATH fallback on purpose: mcpp provisions a declared package on first build
 // or (under --offline) refuses naming it, so an empty answer here means the
 // manifest changed, not that the machine is missing something.
-std::string xpkg_tool(const char* ns, const char* pkg, std::string_view exe) {
+//
+// `names` are the spellings the package uses across platforms -- the Linux
+// python payload is `bin/python3`, the Windows one `python.exe` at its root --
+// so the lookup tries each name in `bin/` and at the root. Before this, the
+// Windows miss was covered by a PATH fallback, and removing the fallback
+// showed the miss: a build with no icons and an empty assets_summary.h.
+std::string xpkg_tool(const char* ns, const char* pkg,
+                      std::initializer_list<std::string_view> names) {
     const char* dir = mcpp::xpkg_dir(ns, pkg);
     if (dir == nullptr || *dir == '\0') return {};
 
-    for (const char* sub : {"bin", ""}) {
-        auto candidate = std::filesystem::path{dir} / sub / exe;
+    for (const auto exe : names) {
+        for (const char* sub : {"bin", ""}) {
+            auto candidate = std::filesystem::path{dir} / sub / exe;
 #ifdef _WIN32
-        candidate.replace_extension(".exe");
+            candidate.replace_extension(".exe");
 #endif
-        std::error_code ec;
-        if (std::filesystem::exists(candidate, ec)) {
-            return candidate.string();
+            std::error_code ec;
+            if (std::filesystem::exists(candidate, ec)) {
+                return candidate.string();
+            }
         }
     }
     return {};
@@ -244,7 +253,7 @@ int main() {
     // puts the project's environment at the front of PATH. Skipped, and SAID,
     // when python is not provisioned: mcpp::warning is the one channel a
     // successful build prints.
-    const std::string python = xpkg_tool("xim", "python", "python3");
+    const std::string python = xpkg_tool("xim", "python", {"python3", "python"});
     const auto icons_in = root / "properties/assets_raw/icons";
     const auto script   = root / "properties/assets_raw/svg_normalize.py";
     if (python.empty()) {
