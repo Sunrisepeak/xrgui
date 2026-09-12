@@ -266,6 +266,11 @@ struct default_application::state{
 				loop->get_renderer().get_valid_cmd_buf(),
 				loop->get_renderer().get_fence());
 			ctx.flush();
+
+			// The window is created hidden (backend::glfw::initialize); the first
+			// present is what makes it worth showing.
+			ctx.window().show();
+
 			loop->reset_term();
 		}
 
