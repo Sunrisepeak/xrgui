@@ -8,11 +8,10 @@
 # xmake is not installed at all: its two asset tasks are thin wrappers around
 # Python scripts, and this job calls those scripts directly.
 #
-# Every tool this job needs except the Vulkan SDK and MSVC comes from xlings --
-# node, python, slang and mcpp are all in xim-pkgindex, and mcpp already uses
-# that registry to resolve its own toolchains and packages. One `xlings install`
-# replaces four hand-rolled setup steps, and the versions come from the same
-# index the build itself reads.
+# Every tool this job needs except the Vulkan SDK and MSVC comes from xlings,
+# and only mcpp is installed by this file: node, python and slang are declared
+# by the manifest (or by the Slang rule it depends on) and mcpp provisions them
+# on the first build, from the same index it resolves everything else from.
 name: mcpp (Windows / MSVC)
 
 env:
@@ -58,7 +57,12 @@ env:
   #
   # 2026.9.9.1 additionally deleted the BOM strip from this job -- mcpp consumes
   # the mark itself. It is described where it used to be.
-  MCPP_VER: 2026.9.9.1
+  #
+  #   2026.9.12.2 -- `[runtime] deploy` places runtime data in a directory
+  #     relative to the executable (mcpp#615), which is what deleted the
+  #     stage-runtime-data action from build.mcpp; and `windows_subsystem`
+  #     (mcpp#618), which is how the GUI targets drop their console window.
+  MCPP_VER: 2026.9.12.2
 
 # Only `push` on master and `pull_request`. Listing the feature branch under
 # push as well made every push with an open PR start the job twice -- once for
@@ -144,10 +148,9 @@ jobs:
           }
           xlings --version
 
-      - name: Install node, python, slang and mcpp via xlings
+      - name: Install mcpp via xlings
         shell: pwsh
         run: |
-          xlings install node python slang
           xlings install mcpp@${{ env.MCPP_VER }}
           # `install` leaves the requested version inactive when another one
           # already holds the name, and says so rather than failing. Make it the
@@ -156,25 +159,14 @@ jobs:
           xlings use mcpp ${{ env.MCPP_VER }}
           xlings list
           # Fail here rather than three steps later with a confusing error.
-          foreach ($t in @("node", "python", "slangc", "mcpp")) {
-              $c = Get-Command $t -ErrorAction SilentlyContinue
-              if (-not $c) { Write-Error "xlings installed $t but it is not on PATH"; exit 1 }
-              Write-Host "$t -> $($c.Source)"
-          }
+          $c = Get-Command mcpp -ErrorAction SilentlyContinue
+          if (-not $c) { Write-Error "xlings installed mcpp but it is not on PATH"; exit 1 }
+          Write-Host "mcpp -> $($c.Source)"
           $v = (mcpp --version 2>&1 | Out-String).Trim()
           Write-Host $v
           if ($v -notmatch [regex]::Escape("${{ env.MCPP_VER }}")) {
               Write-Error "expected mcpp ${{ env.MCPP_VER }}, got: $v"; exit 1
           }
-
-          # build.mcpp decides whether to run the shader generator by probing
-          # for slangc, and a probe that disagrees with reality costs a silent
-          # "compiled shaders: 0" much later. Record what each form of the
-          # question answers here, where it is cheap to read.
-          & slangc --version 2>&1 | Out-Host
-          Write-Host "slangc --version exit=$LASTEXITCODE"
-          & where.exe slangc 2>&1 | Out-Host
-          Write-Host "where slangc exit=$LASTEXITCODE"
 
       - name: Install Vulkan SDK
         run: |
@@ -401,17 +393,16 @@ jobs:
       - name: mcpp — build the library and xrgui_hello
         run: mcpp build
 
-      # build.mcpp runs the two asset generators, and neither reports failure
-      # through its exit status -- svg_normalize.py returns 0 even when its npx
-      # child crashes. Assert on what they were supposed to produce.
-      - name: Assert generated assets exist
+      # The icon generator is the one step left in build.mcpp whose exit status
+      # is not trustworthy (svg_normalize.py returns 0 when its npx child
+      # crashes), so assert on what it was supposed to produce. The shaders no
+      # longer need this: they are ninja edges and a failure fails the build.
+      - name: Assert generated icons exist
         shell: pwsh
         run: |
           $svg = @(Get-ChildItem properties/assets_raw/gen -Filter *.svg -Recurse -ErrorAction SilentlyContinue)
-          $spv = @(Get-ChildItem properties/assets/shader/spv -Filter *.spv -Recurse -ErrorAction SilentlyContinue)
-          Write-Host "normalized icons: $($svg.Count)   compiled shaders: $($spv.Count)"
+          Write-Host "normalized icons: $($svg.Count)"
           if ($svg.Count -eq 0) { Write-Error "build.mcpp produced no normalized icons"; exit 1 }
-          if ($spv.Count -eq 0) { Write-Error "build.mcpp produced no SPIR-V shaders"; exit 1 }
 
       - name: mcpp — build xrgui_example
         run: mcpp build --features examples
@@ -427,6 +418,29 @@ jobs:
           & $exe.FullName
           if ($LASTEXITCODE -ne 0) { Write-Error "tests failed"; exit $LASTEXITCODE }
 
+      # `--profile dev` so the pack reuses the build above instead of
+      # compiling the tree a second time under release; the artifact is a
+      # smoke-test bundle, not a release.
+      #
+      # WiX is a .NET tool that is not redistributable through xlings, so the
+      # `msi` member locates it on PATH rather than installing it. 6.0.2, not
+      # unpinned: v7 refuses to run until a licence is accepted interactively
+      # (WIX7015), which mcpp-plugins measured on the same runner image.
+      - name: mcpp — pack (zip and MSI)
+        shell: pwsh
+        run: |
+          # Named: two bin targets are declared and only one is in this
+          # feature set, so a bare `mcpp pack` cannot settle on it.
+          mcpp pack --profile dev xrgui_hello
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          dotnet tool install --global wix --version 6.0.2
+          wix --version
+          mcpp pack --profile dev --format msi xrgui_hello
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          Get-ChildItem target/dist -Recurse | Select-Object FullName, Length
+          $msi = Get-ChildItem target -Filter *.msi -Recurse | Select-Object -First 1
+          if (-not $msi) { Write-Error "no MSI was produced"; exit 1 }
+
       - name: Upload mcpp artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -434,5 +448,7 @@ jobs:
           # Per leg: upload-artifact@v4 refuses two uploads under one name,
           # and the two legs' binaries are not interchangeable anyway.
           name: xrgui-mcpp-windows-${{ matrix.origin }}
-          path: target/**/bin/
+          path: |
+            target/dist/
+            target/**/*.msi
           if-no-files-found: ignore

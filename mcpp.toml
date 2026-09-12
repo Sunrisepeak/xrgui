@@ -1,4 +1,4 @@
-# XRGUI under mcpp -- Windows / MSVC.
+# XRGUI under mcpp.
 #
 # This file is a transcription of xmake.lua, not a redesign. The xmake build is
 # MSVC-first and its CI is green, so anything that differs here is a bug in this
@@ -11,15 +11,26 @@
 #   target("xrgui.hello")        -> [targets.xrgui_hello]
 #   target("xrgui.tests")        -> [targets.xrgui_tests]
 #
-# Linux/GCC is deliberately out of scope: this is a Windows-only PR.
+# Windows/MSVC is the reference; Linux builds with the clang pinned under
+# [toolchain] and is what the Linux CI leg runs. Requires mcpp 2026.9.12.2:
+# `[runtime] deploy` and `windows_subsystem` arrived in it.
 
 [package]
-name    = "xrgui"
-version = "0.1.0"
+name        = "xrgui"
+version     = "0.1.0"
+description = "A GUI framework on C++23 modules and Vulkan"
+license     = "BSD-2-Clause"
+authors     = ["MoYanxi"]
+repo        = "https://github.com/Yuria-Shikibe/xrgui"
 
 [build]
 # MSVC calls C++ module interfaces .ixx; mcpp needs to be told.
 module_extensions = [".ixx"]
+
+# The device axis. default_application.cpp asks for VK_API_VERSION_1_3, and
+# mcpp.rules.slang reads this to pick the SPIR-V profile (1.3 -> spirv_1_6).
+# It is also what routes the constrained glob below to that rule.
+accel = "vulkan1.3"
 
 sources = [
   "src/**/*.ixx",                       "src/**/*.cpp",
@@ -35,6 +46,22 @@ sources = [
 
   # A standalone -mavx512 probe, not part of the library. xmake never lists it.
   "!src/vectorization_check.cpp",
+
+  # The shaders, compiled by mcpp.rules.slang into the binary -- one ninja edge
+  # each, ordered before the C++ compiles, `-depfile` for what they import.
+  # This is the mcpp counterpart of properties/assets_raw/shader/config.toml,
+  # which xmake's xrgui.gen_slang task still reads; the entries there are the
+  # entry-point files, so the modules under lib/ and the two files config.toml
+  # does not list stay out.
+  { glob = "properties/assets_raw/shader/slangs/**/*.slang", accel = "vulkan1.3" },
+  "!properties/assets_raw/shader/slangs/lib/**",
+  "!properties/assets_raw/shader/slangs/ui/ui_structs.slang",
+  "!properties/assets_raw/shader/slangs/ui/slide_line.slang",
+  # Does not compile under slang 2026.14.1 ("duplicate modifier", the three
+  # `restrict readonly RWTexture2D` declarations) and nothing loads it. The
+  # Python flow only warned about it, which is how it went unnoticed; here a
+  # failing edge fails the build, so it is excluded until upstream fixes it.
+  "!properties/assets_raw/shader/slangs/post_process/bloom.merge.slang",
 ]
 
 include_dirs = [
@@ -86,7 +113,37 @@ defines = [
   # Contour::addEdge(EdgeHolder&&) at link time. xrepo's msdfgen does build with
   # it, so xmake keeps the define and is unchanged.
   "XRGUI_MSDFGEN_NO_CPP11",
+  # The shaders arrive through the surface mcpp.rules.slang generates
+  # (`xrgui::shaders::ui::draw::vert()`), not as .spv files beside the binary.
+  # render_context.cpp and src.examples/main.cpp switch on this; under xmake
+  # the macro is undefined and they keep loading the files gen_slang wrote.
+  "XRGUI_SHADER_SURFACE",
 ]
+
+# ── Runtime data beside the executable ─────────────────────────────────────
+# xmake's after_build copies properties/assets and vk_layer_settings.txt into
+# the target dir so the built image can find its data (it looks them up
+# relative to the working directory). `deploy` puts a file in a directory
+# relative to the executable; `deploy_files` puts it beside the executable.
+# `mcpp pack` stages both at the same relative place. This replaced a 70-line
+# copy action in build.mcpp that carried one command per OS.
+#
+# Every entry is a file: the shaders that used to be in this tree are compiled
+# in now, and what is left is small enough to name.
+[runtime]
+deploy_files = ["properties/vk_layer_settings.txt"]
+deploy = [
+  { from = "properties/assets/font/SourceHanSansCN-Regular.otf", to = "assets/font" },
+  { from = "properties/assets/images/logo.png",                  to = "assets/images" },
+  { from = "properties/assets/markdown/preview.md",              to = "assets/markdown" },
+  { from = "properties/assets/test.csv",                         to = "assets" },
+]
+
+# Windows: the executable's icon and the version block in its Properties
+# dialog, generated from [package]. Inapplicable elsewhere, byte-identical
+# build. The .ico is cut from properties/assets/images/logo.png.
+[resources]
+icon = "properties/assets/images/xrgui.ico"
 
 # compat.nanosvg follows upstream's layout, where the headers sit in src/ and are
 # included as <nanosvg.h>. This repo writes <nanosvg/nanosvg.h> because xrepo's
@@ -130,15 +187,30 @@ marzer.tomlplusplus   = "3.4.0"
 # exactly that file, so taking the package is cheaper than patching upstream.
 neargye.magic_enum    = "0.9.8"
 
+# ── Build-time rules and distributables ────────────────────────────────────
+# Never linked into the artifact; `host-module = true` compiles the members
+# into build.mcpp, which imports them by name:
+#   rules-slang    .slang -> SPIR-V, embedded, reached as xrgui::shaders::...
+#   dist-appimage  `mcpp pack --format appimage` (Linux)
+#   dist-wix       `mcpp pack --format msi`      (Windows; WiX 6 located on PATH)
+# The rule declares `xim:slang` itself, gated on the vulkan accelerator above.
+[build-dependencies.mcpp]
+plugins = { version = "0.7.0", features = ["rules-slang", "dist-appimage", "dist-wix"], host-module = true }
+
 # ── Targets ────────────────────────────────────────────────────────────────
+# GUI programs: no console window on Windows (`/SUBSYSTEM:WINDOWS`, the
+# `main` entry kept through `/ENTRY:mainCRTStartup`). Nothing changes on other
+# targets. Known cost: stdout no longer reaches a parent terminal there.
 [targets.xrgui_hello]
-kind = "bin"
-main = "src.hello/main.cpp"
+kind              = "bin"
+main              = "src.hello/main.cpp"
+windows_subsystem = "windows"
 
 [targets.xrgui_example]
 kind              = "bin"
 main              = "src.examples/main.cpp"
 required_features = ["examples"]
+windows_subsystem = "windows"
 
 # xmake's xrgui.tests target is a plain binary that links a hand-picked subset of
 # src/ plus src.tests/. mcpp discovers tests under tests/**, so this stays a
@@ -154,23 +226,21 @@ examples = { sources = ["src.examples/**/*.ixx", "src.examples/**/*.cpp",
                         "!src.examples/main.cpp"] }
 tests    = { sources = ["src.tests/**/*.cpp", "!src.tests/main.cpp"] }
 
-# The Linux desktop dependencies. A feature rather than a plain entry because
-# mcpp has no platform-conditional [dependencies] table -- [target.<pred>] takes
-# six keys and none of them is one -- and freedesktop.fontconfig's index recipe
-# has a `linux` section only, so an unconditional declaration does not resolve
-# on Windows.
+[feature-deps.tests]
+compat.gtest = "1.17.0"
+
+# The Linux desktop dependency, and only there: freedesktop.fontconfig's index
+# recipe has a `linux` section only, so an unconditional declaration does not
+# resolve on Windows. `[target.<sel>.dependencies]` is evaluated against the
+# resolved target, so a Windows build never downloads it. This used to be a
+# `linux-desktop` feature the Linux command line had to name.
 #
 # src/platform/font.ixx calls FcInitLoadConfigAndFonts and friends under
 # `#elif defined(__linux__)`; without this the link ends in undefined Fc*
 # symbols. The package comes from the index rather than the host, which is the
 # whole point of not writing `-lfontconfig` here.
-linux-desktop = {}
-
-[feature-deps.linux-desktop]
-freedesktop.fontconfig = "2.15.0"
-
-[feature-deps.tests]
-compat.gtest = "1.17.0"
+[target.linux.dependencies.freedesktop]
+fontconfig = "2.15.0"
 
 # xmake: add_cxflags("/bigobj", {tools = "cl"}) + set_encodings("utf-8").
 # Kept under the windows condition so the manifest still parses and scans on a
@@ -178,8 +248,7 @@ compat.gtest = "1.17.0"
 [target.windows.build]
 cxxflags = ["/bigobj", "/utf-8"]
 
-# xmake's add_syslinks(...), plus what three index packages spell in a form the
-# MSVC linker drops.
+# xmake's add_syslinks(...).
 #
 # NOT `ldflags`: those reach the linker verbatim, so a GNU `-luser32` written
 # there arrives at link.exe unchanged, and link.exe does not reject it --
@@ -190,23 +259,13 @@ cxxflags = ["/bigobj", "/utf-8"]
 # the very end of the build. `libraries` is the platform-neutral spelling: the
 # same `user32` becomes user32.lib for MSVC and -luser32 for GNU.
 #
-# This lived in build.mcpp as mcpp::link_lib() until mcpp 2026.9.9.1, because a
-# `[target.<pred>.runtime]` table used to be parsed and then discarded --
-# silently, which is the worst way for a manifest key to not work. It is applied
-# now (mcpp-community/mcpp#594), so the declaration belongs here, where it is
-# read as data rather than executed as a C++ program.
-#
-# The first group is this project's own. The rest is not ours: compat.glfw,
-# compat.mimalloc and compat.vulkan each declare their Windows links as GNU
-# ldflags, which MSVC drops for the reason above. Naming them again is
-# duplication of package metadata and should be deleted once those packages
-# express it as `libraries` -- which is available to them today.
+# Only this project's own libraries are here. compat.glfw (gdi32),
+# compat.mimalloc (psapi, bcrypt, ...) and compat.vulkan (vulkan-1 and its
+# directory) declare theirs the same way in the index since 2026-09-12; they
+# used to be repeated here, and vulkan-1's search path used to be computed in
+# build.mcpp from whatever the machine had.
 [target.windows.runtime]
-libraries = [
-  "advapi32", "imm32", "ole32", "shell32", "user32",  # xmake.lua add_syslinks
-  "gdi32",                                            # compat.glfw
-  "psapi", "bcrypt",                                  # compat.mimalloc
-]
+libraries = ["advapi32", "imm32", "ole32", "shell32", "user32"]
 
 [toolchain]
 # This project is MSVC-first and upstream's MSVC CI is green; mcpp has no reason
@@ -224,10 +283,16 @@ libraries = [
 # "move vswhere.exe aside" step.
 windows = "msvc@system"
 
+# The Linux port (clang 22 / libc++) was done against this payload; the
+# machine's default is gcc 16, which this tree has not been built with. Pinned
+# so a Linux build means the same compiler on every machine, including CI.
+linux = "llvm@22.1.8"
+
 # ── The build's tools ──────────────────────────────────────────────────────
 #
-# build.mcpp runs two Python generators, one of which drives slangc. Both used
-# to be found by probing PATH, and that cost real time twice on one machine:
+# build.mcpp runs the icon generator, which is Python driving `npx` (node).
+# Tools used to be found by probing PATH, and that cost real time twice on one
+# machine:
 #
 #   * `python` there is 2.7.18 and the scripts are Python 3, so the generator
 #     died on a SyntaxError -- silently, because build.mcpp reports a failed
@@ -241,15 +306,25 @@ windows = "msvc@system"
 #
 # Declaring them makes the versions a property of the project rather than of
 # whichever machine builds it: mcpp provisions them on first build and delivers
-# each one's directory as MCPP_XPKG_<NAME>_DIR, which build.mcpp uses in
-# preference to any PATH lookup. A shim cannot be in front of that, and there is
-# no `python` on any machine that is the wrong Python.
+# each one's directory through mcpp::xpkg_dir, which build.mcpp uses instead of
+# any PATH lookup. A shim cannot be in front of that, and there is no `python`
+# on any machine that is the wrong Python.
+#
+# node is reached differently: svg_normalize.py spawns `npx` by name. Because
+# this project declares `[xlings] subos`, mcpp runs build.mcpp with that
+# environment's bin at the front of PATH (2026.8.25.1+), so the declared node
+# is the one the script finds -- on every machine, with nothing installed by
+# hand.
+#
+# slangc is NOT here: mcpp.rules.slang declares `xim:slang` itself, under the
+# feature that selects it and the vulkan accelerator this build names. Naming
+# it here would still work and would win over the rule's floor.
 [xlings]
 subos = "default"
 
 [xlings.workspace]
 "xim:python" = "3.13.12"
-"xim:slang"  = "2026.14.1"
+"xim:node"   = "24.20.0"
 
 [profile.release]
 opt   = 2

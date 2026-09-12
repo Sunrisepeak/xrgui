@@ -1,42 +1,50 @@
-// Build-time asset codegen — the mcpp counterpart of xmake.lua's
-// `media.svg_to_bin` rule plus its `before_build` hook.
+// Build-time codegen for xrgui under mcpp -- what is left after mcpp itself
+// took over most of what this file used to do.
 //
-// Two outputs, both under MCPP_OUT_DIR/.assets/includes:
+// Three things happen here, in this order:
 //
-//   <rel>.svg.h          one bin2c byte list per normalized SVG, meant to be
-//                        #include'd INSIDE a `char[] = { … }` initializer
-//   assets_summary.h     the aggregate gui.assets.cpp includes, declaring one
-//                        `constexpr inline char[]` per SVG, namespaced by the
-//                        SVG's directory
+//   1. Submodule patches. Applied idempotently before the module scan, because
+//      one hunk exists to satisfy the scanner. mcpp has no mechanism for this;
+//      the patches' real home is the upstream repositories.
 //
-// bin2c is a dozen lines here rather than an external tool, which is simpler
-// than xmake's `utils.binary.bin2c` dependency and removes one more reason to
-// need a host toolchain just to build.
+//   2. Icon normalization + bin2c. properties/assets_raw/svg_normalize.py
+//      (Python driving `npx oslllo-svg-fixer`) turns icons into normalized SVGs
+//      under properties/assets_raw/gen, which xmake's media.svg_to_bin rule and
+//      this file both turn into byte lists under MCPP_OUT_DIR/.assets/includes:
 //
-// Before any of that, this also runs the two upstream asset generators that
-// xmake exposes as `xmake xrgui.gen_icon` / `xmake xrgui.gen_slang`:
+//        <rel>.svg.h        one bin2c byte list per SVG, #include'd INSIDE a
+//                           `char[] = { ... }` initializer
+//        assets_summary.h   the aggregate gui.assets.cpp includes, one
+//                           `constexpr inline char[]` per SVG, namespaced by
+//                           the SVG's directory
 //
-//   properties/assets_raw/svg_normalize.py   icons -> normalized SVGs
-//   properties/build_util/slang_builder.py   .slang -> .spv
+//      The summary is written even with no SVGs: a fresh checkout has none,
+//      gui.assets.cpp only needs the header to EXIST, and that is what lets
+//      the tree build before the generator has ever run. Python and node come
+//      from [xlings.workspace]; if python is absent the step is skipped and
+//      mcpp::warning says so on the build that skipped it.
 //
-// so that `mcpp build` is self-contained and a local checkout gets the same
-// assets CI does. Both are SKIPPED, with a message, when their tools are not
-// installed -- python for the first, python and slangc for the second. That is
-// deliberate: the tree must still build without them, which is what the empty
-// summary below is for.
+//   3. Shaders and distributables, both from mcpp:plugins. mcpp.rules.slang
+//      compiles every .slang the constrained glob in mcpp.toml routed here,
+//      one ninja edge each, and generates xrgui.shaders.h -- the accessors
+//      render_context.cpp and src.examples/main.cpp call under
+//      XRGUI_SHADER_SURFACE. mcpp.dist.appimage and mcpp.dist.wix declare the
+//      formats `mcpp pack --format` can ask for and submit nothing otherwise.
 //
-// The bin2c tree is written to the OUTPUT directory, never into properties/.
-// The two generators above are the exception and write where upstream puts
-// them (properties/assets_raw/gen, properties/assets/shader/spv), because those
-// are runtime assets the application loads by path, not build inputs.
+// What is NOT here any more, and where it went:
 //
-// Note the summary is emitted even when there are no SVGs at all. That is the
-// normal state of a fresh checkout: properties/assets_raw/gen/ is produced by
-// `xmake xrgui.gen_icon` and is not committed. gui.assets.cpp only needs the
-// header to EXIST; an empty one compiles, which is what lets the tree build
-// without Python/Node/slangc. See .agents/docs/2026-08-12-mcpp-windows.md.
+//   * the runtime-data copy action  -> [runtime] deploy in mcpp.toml
+//   * the Windows system libraries  -> [target.windows.runtime] libraries
+//   * slang_builder.py + slangc     -> mcpp.rules.slang
+//   * PATH probing for tools        -> every tool is declared; mcpp provisions it
+//
+// See .agents/docs/2026-09-12-mcpp-build-optimization.md for the reasoning.
 import mcpp;
 import std;
+import mcpp.plugins;
+import mcpp.rules.slang;
+import mcpp.dist.appimage;
+import mcpp.dist.wix;
 
 namespace {
 
@@ -45,35 +53,15 @@ namespace {
 //
 // Do not expect to SEE these during a healthy build. mcpp captures stdout and
 // stderr merged, parses the result for directives, and echoes it only when this
-// program exits non-zero or times out. So a skipped generator explains itself
-// only in the run where something else already went wrong -- which is why the
-// real gate is CI's "Assert generated assets exist", asserting on outputs.
+// program exits non-zero or times out. Anything a user must see on a build that
+// SUCCEEDED goes through mcpp::warning instead, which mcpp prints and replays
+// on cache hits.
 //
 // std::cerr and not stderr: `stderr` is a macro from <cstdio>, and macros do
 // not come through `import std`.
 template <typename... Args>
 void note(std::format_string<Args...> fmt, Args&&... args) {
     std::println(std::cerr, "build.mcpp: {}", std::format(fmt, std::forward<Args>(args)...));
-}
-
-// Is `tool` on PATH? Asks the shell to resolve the name rather than running the
-// tool with a version flag, because those are not the same question. slangc is
-// the case in point -- it has no --version at all:
-//
-//     1 | --version
-//       | ^^ unknown command-line option '--version'
-//     slangc --version exit=1
-//     where slangc exit=0
-//
-// so a --version probe called an installed, working compiler missing, and the
-// shader generator was skipped: "normalized icons: 40   compiled shaders: 0".
-bool have_tool(std::string_view tool) {
-#ifdef _WIN32
-    const auto probe = std::format("where {} >NUL 2>&1", tool);
-#else
-    const auto probe = std::format("command -v {} >/dev/null 2>&1", tool);
-#endif
-    return std::system(probe.c_str()) == 0;
 }
 
 // Applies a patch to a checked-out submodule, idempotently.
@@ -113,33 +101,22 @@ void apply_patch(const std::filesystem::path& repo, const std::filesystem::path&
     note("applied {}", patch.filename().string());
 }
 
-// The executable for a package declared in [xlings.workspace].
+// The executable for a package declared in [xlings.workspace], through
+// mcpp::xpkg_dir -- an interface, so this program does not encode how the
+// store spells things.
 //
-// Through mcpp::xpkg_dir rather than std::getenv("MCPP_XPKG_..."): the header
-// calls that an INTERFACE, not a naming convention, precisely so a build program
-// does not encode how the store spells things. An earlier revision of this file
-// built the variable name by hand, which worked and was still the wrong way to
-// ask.
+// From the declared package's directory and never from PATH, because PATH lied
+// here twice: `python` on this box is 2.7.18 while the generator is Python 3,
+// and a tool on PATH was once an xlings shim owned by ANOTHER project that
+// printed "not installed in this subos" when run. Both were silent.
 //
-// Taking the executable from the declared package's directory is what makes this
-// immune to the two ways a PATH lookup lied here:
-//
-//   * `python` on a Linux box is often Python 2 (2.7.18 on this one) while the
-//     generators are Python 3. The lookup succeeded and the script died on a
-//     SyntaxError.
-//   * `slangc` on PATH was an xlings shim for a package ANOTHER project had
-//     declared. `command -v` succeeded; running it printed "slangc is not
-//     installed in this subos" and exited non-zero.
-//
-// Both were silent -- run_generator writes to a stderr mcpp echoes only when
-// this program exits non-zero -- and both ended as an application linked with no
-// shaders, crashing at startup in createShaderModule.
-//
-// Falls back to a bare name so a checkout that has not provisioned the
-// environment still behaves as it did before, rather than not running at all.
+// Returns "" when the package is not declared or not installed. There is no
+// PATH fallback on purpose: mcpp provisions a declared package on first build
+// or (under --offline) refuses naming it, so an empty answer here means the
+// manifest changed, not that the machine is missing something.
 std::string xpkg_tool(const char* ns, const char* pkg, std::string_view exe) {
     const char* dir = mcpp::xpkg_dir(ns, pkg);
-    if (dir == nullptr || *dir == '\0') return std::string{exe};
+    if (dir == nullptr || *dir == '\0') return {};
 
     for (const char* sub : {"bin", ""}) {
         auto candidate = std::filesystem::path{dir} / sub / exe;
@@ -151,20 +128,19 @@ std::string xpkg_tool(const char* ns, const char* pkg, std::string_view exe) {
             return candidate.string();
         }
     }
-    return std::string{exe};
+    return {};
 }
 
-// Runs a generator and reports failure loudly: a shader that silently failed to
-// compile turns into a missing file at runtime, which is much harder to trace.
-// Reports failure but does not stop the build. Two reasons: these generators
-// are optional by design (the tree has to build without python/node/slangc),
-// and their exit status is not trustworthy anyway -- svg_normalize.py returns 0
-// even when the npx child crashes. CI asserts on the OUTPUTS instead, which is
-// the only signal that actually means anything here.
+// Runs the icon generator. A failure is reported through mcpp::warning -- the
+// channel a successful build prints -- but does not stop the build: the tree
+// has to build without the generator (the empty summary below is for that),
+// and its exit status is not trustworthy anyway, svg_normalize.py returns 0
+// when its npx child crashes. CI asserts on the OUTPUTS, which is the only
+// signal that means anything here.
 void run_generator(std::string_view what, const std::string& cmd) {
     note("{} ...", what);
     if (const int rc = std::system(cmd.c_str()); rc != 0) {
-        note("WARNING: {} exited {}\n  {}", what, rc, cmd);
+        mcpp::warning(std::format("{} exited {}: {}", what, rc, cmd).c_str());
     }
 }
 
@@ -261,52 +237,26 @@ int main() {
     apply_patch(root / "external/mo_yanxi_vulkan_wrapper/external/mo_yanxi_utility",
                 root / "mcpp/patches/mo_yanxi_utility.patch");
 
-    // ---- upstream asset generators (xmake's xrgui.gen_icon / gen_slang) ----
+    // ---- icon normalization (xmake's xrgui.gen_icon) ----------------------
     //
-    // Both tools come from [xlings.workspace] when the project declared it --
-    // see the note on xpkg_tool, and the one in mcpp.toml. `python3` before
-    // `python` is the fallback ordering for a checkout that has not provisioned
-    // the environment: the scripts are Python 3 and a bare `python` frequently
-    // is not.
-    std::string python = xpkg_tool("xim", "python", "python3");
-    if (python == "python3" && !have_tool("python3")) {
-        python = have_tool("python") ? "python" : "";
-    }
-    const std::string slangc = xpkg_tool("xim", "slang", "slangc");
-    const bool have_python = !python.empty();
-
+    // python comes from [xlings.workspace] through mcpp::xpkg_dir; the script
+    // spawns `npx` by name, which resolves to the declared node because mcpp
+    // puts the project's environment at the front of PATH. Skipped, and SAID,
+    // when python is not provisioned: mcpp::warning is the one channel a
+    // successful build prints.
+    const std::string python = xpkg_tool("xim", "python", "python3");
     const auto icons_in = root / "properties/assets_raw/icons";
-    if (have_python && std::filesystem::is_directory(icons_in)) {
-        const auto script = root / "properties/assets_raw/svg_normalize.py";
-        if (std::filesystem::exists(script)) {
-            const auto cmd = std::format(
-                "{} \"{}\" -i \"{}\" -o \"{}\"",
-                python, script.string(), icons_in.string(),
-                (root / "properties/assets_raw/gen/icons").string());
-            run_generator("normalizing icons", cmd);
-        }
-    } else if (!have_python) {
-        note("python not found, skipping icon normalization");
+    const auto script   = root / "properties/assets_raw/svg_normalize.py";
+    if (python.empty()) {
+        mcpp::warning("xim:python is not provisioned, so the icons were not normalized; "
+                      "properties/assets_raw/gen keeps whatever it had");
+    } else if (std::filesystem::is_directory(icons_in) && std::filesystem::exists(script)) {
+        run_generator("normalizing icons", std::format(
+            "{} \"{}\" -i \"{}\" -o \"{}\"",
+            python, script.string(), icons_in.string(),
+            (root / "properties/assets_raw/gen/icons").string()));
     }
-
-    const auto shader_cfg = root / "properties/assets_raw/shader/config.toml";
-    if (have_python && std::filesystem::exists(shader_cfg)) {
-        const auto script = root / "properties/build_util/slang_builder.py";
-        if (std::filesystem::exists(script)) {
-            const auto cmd = std::format(
-                "{} \"{}\" \"{}\" \"{}\" \"{}\" -j 30 --oneshot",
-                python, script.string(), slangc,
-                (root / "properties/assets/shader/spv").string(),
-                shader_cfg.string());
-            run_generator("compiling slang shaders", cmd);
-        }
-    } else if (std::filesystem::exists(shader_cfg)) {
-        note("python and/or slangc not found, skipping shader compilation");
-    }
-
     mcpp::rerun_if_changed_glob("properties/assets_raw/icons/**/*.svg");
-    mcpp::rerun_if_changed_glob("properties/assets_raw/shader/**/*.slang");
-    mcpp::rerun_if_changed_glob("properties/assets_raw/shader/config.toml");
 
     std::vector<std::filesystem::path> svgs;
     if (std::filesystem::is_directory(src_base)) {
@@ -357,115 +307,6 @@ int main() {
 
     write_if_changed(out_dir / "assets_summary.h", summary);
 
-    // ---- runtime data next to the executable (xmake's after_build) ----
-    //
-    // xmake copies properties/assets and properties/vk_layer_settings.txt into
-    // the target dir so the built image can find its data. build.mcpp cannot do
-    // that itself: it runs during prepare, and the binary directory is not in
-    // the environment contract -- ${mcpp.bin_dir} exists only as an action
-    // interpolation. So it is declared as an action instead.
-    //
-    // `artifact` is the role whose outputs are new files rather than compile or
-    // link inputs, which is what these are. Note it does NOT by itself order
-    // the edge after the link: that only happens when the action's own inputs
-    // are link outputs. These inputs are source files, so ninja may run the
-    // copy whenever it likes -- which is fine, because runtime data does not
-    // depend on the binaries. Naming a link output to force the ordering would
-    // mean naming one specific target, and which targets exist depends on the
-    // active features.
-    //
-    // One action, not two: a single copy command takes both sources, and every
-    // output still has to be named because mcpp fixes the file set during
-    // prepare. That is workable because the set is small and the generated
-    // shaders above are already on disk by this point.
-    const auto assets_src  = root / "properties/assets";
-    const auto vk_settings = root / "properties/vk_layer_settings.txt";
-
-    std::vector<std::filesystem::path> asset_files;
-    if (std::filesystem::is_directory(assets_src)) {
-        for (const auto& e : std::filesystem::recursive_directory_iterator{assets_src}) {
-            if (e.is_regular_file()) asset_files.push_back(e.path());
-        }
-        std::ranges::sort(asset_files);
-    }
-    const bool have_vk = std::filesystem::exists(vk_settings);
-
-    if (!asset_files.empty() || have_vk) {
-        mcpp::action a;
-        a.id   = "stage-runtime-data";
-        a.role = "artifact";
-
-        // argv, not a shell string. cp takes several sources and one
-        // destination; Copy-Item is the Windows equivalent that handles a
-        // directory and a plain file in the same call, which `copy` and
-        // `xcopy` cannot.
-        if (mcpp::target_os() == std::string_view{"windows"}) {
-            std::string paths;
-            if (!asset_files.empty()) paths += std::format("'{}'", assets_src.string());
-            if (have_vk) {
-                if (!paths.empty()) paths += ",";
-                paths += std::format("'{}'", vk_settings.string());
-            }
-            a.arg("powershell").arg("-NoProfile").arg("-Command")
-             .arg(std::format("Copy-Item -Force -Recurse -Path {} -Destination '${{mcpp.bin_dir}}'", paths).c_str());
-        } else {
-            a.arg("cp").arg("-r");
-            if (!asset_files.empty()) a.arg(assets_src.string().c_str());
-            if (have_vk) a.arg(vk_settings.string().c_str());
-            a.arg("${mcpp.bin_dir}/");
-        }
-
-        for (const auto& f : asset_files) {
-            a.input(f.string().c_str());
-            const auto rel = std::filesystem::relative(f, assets_src).generic_string();
-            a.output(std::format("${{mcpp.bin_dir}}/assets/{}", rel).c_str());
-        }
-        if (have_vk) {
-            a.input(vk_settings.string().c_str())
-             .output("${mcpp.bin_dir}/vk_layer_settings.txt");
-        }
-        a.submit();
-        note("staging {} runtime file(s) beside the binaries",
-             asset_files.size() + (have_vk ? 1u : 0u));
-    }
-
-    // ---- Windows link libraries -------------------------------------------
-    //
-    // The fixed list of system libraries is NOT here. It is data, not a
-    // decision, so it is declared in mcpp.toml as
-    // `[target.windows.runtime] libraries` -- see the note there for why the
-    // spelling matters and why it could not live there before mcpp 2026.9.9.1.
-    //
-    // What remains is the one library whose SEARCH PATH cannot be written down
-    // ahead of time, because it depends on what is installed on the machine.
-    if (mcpp::target_os() == std::string_view{"windows"}) {
-        // vulkan-1: an import library of symbol stubs, since vulkan-1.dll ships
-        // with the GPU driver. compat.vulkan carries one under <pkg>/lib, and
-        // the Vulkan SDK -- which is what the xmake build links against, via
-        // $VULKAN_SDK/lib in mo_yanxi_vulkan_wrapper's xmake.lua -- carries the
-        // same thing. Take whichever is actually on disk.
-        //
-        // link_lib is called either way. Naming a library that cannot be found
-        // fails the link with "cannot open input file 'vulkan-1.lib'", which
-        // says what is wrong; staying silent instead produces a hundred
-        // unresolved vk* symbols that do not.
-        std::vector<std::filesystem::path> vk_dirs;
-        if (const char* dir = mcpp::dep_dir("compat.vulkan"); dir && *dir) {
-            vk_dirs.emplace_back(std::filesystem::path{dir} / "lib");
-        }
-        if (const char* sdk = std::getenv("VULKAN_SDK"); sdk && *sdk) {
-            vk_dirs.emplace_back(std::filesystem::path{sdk} / "Lib");
-            vk_dirs.emplace_back(std::filesystem::path{sdk} / "lib");
-        }
-        for (const auto& dir : vk_dirs) {
-            if (std::filesystem::exists(dir / "vulkan-1.lib")) {
-                mcpp::link_search(dir.string().c_str());
-                break;
-            }
-        }
-        mcpp::link_lib("vulkan-1");
-    }
-
     // Private to this package -- consumers of xrgui have no business seeing
     // the generated tree.
     mcpp::include_dir(out_dir.string().c_str());
@@ -476,5 +317,49 @@ int main() {
     mcpp::rerun_if_changed_glob("properties/assets_raw/gen/**/*.svg");
 
     note("{} svg asset(s) -> {}", svgs.size(), out_dir.string());
+
+    // ---- shaders: mcpp.rules.slang ------------------------------------------
+    //
+    // The flags are properties/assets_raw/shader/config.toml's common_options,
+    // transcribed. `-O3` is the rule's own field; the rest are slangc's and go
+    // through verbatim. config.toml's one per-shader flag
+    // (`-emit-spirv-via-glsl` on frag_mask_apply) is not needed with slang
+    // 2026.14.1 -- measured: the shader compiles directly -- so there is no
+    // per_file entry. The header surface rather than the module one, because
+    // the consumers are module implementation units and a conditional
+    // #include in their global module fragment is the one shape the scanner
+    // accepts.
+    {
+        mcpp::rules::slang::options o;
+        o.base_dir     = "properties/assets_raw/shader/slangs";
+        o.includes     = { "properties/assets_raw/shader/slangs/lib",
+                           "properties/assets_raw/shader/slangs/ui" };
+        o.optimization = "3";
+        o.extra_args   = { "-g", "-fvk-use-gl-layout", "-fvk-use-entrypoint-name",
+                           "-emit-spirv-directly", "-floating-point-mode", "fast" };
+        o.surface      = mcpp::plugins::surface::kind::c_header;
+        o.module_name  = "xrgui.shaders";
+        if (!mcpp::rules::slang::compile(o)) return 1;
+    }
+
+    // ---- distributables: `mcpp pack --format appimage | msi` ----------------
+    //
+    // Each member declares its format unconditionally and submits its action
+    // only when that format was asked for, so `mcpp build` has the graph it
+    // always had. A member for another OS declares and never applies.
+    {
+        mcpp::dist::appimage::options a;
+        a.target     = "xrgui_hello";
+        a.app_name   = "xrgui";
+        a.icon       = "properties/assets/images/xrgui-512.png";
+        a.categories = { "Development" };
+        a.terminal   = false;
+        if (!mcpp::dist::appimage::generate(a)) return 1;
+
+        mcpp::dist::wix::options w;
+        w.target       = "xrgui_hello";
+        w.product_name = "xrgui";
+        if (!mcpp::dist::wix::generate(w)) return 1;
+    }
     return 0;
 }
