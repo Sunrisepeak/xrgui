@@ -181,9 +181,10 @@ libraries = ["advapi32", "imm32", "ole32", "shell32", "user32"]
 # The Visual Studio VSINSTALLDIR names (the CI image's release-channel 14.51
 # ICEs on this codebase; the job exports the preview toolset's vcvars).
 windows = "msvc@system"
-# The Linux port was done against this payload; pinned so every machine
-# builds with the same compiler.
+# The clang the Unix ports are built with, so every machine builds with the
+# same compiler; the same payload exists for both hosts.
 linux   = "llvm@22.1.8"
+macos   = "llvm@22.1.8"
 
 # The project's environment. No tools are declared: the icon tool is built
 # from this repository and slang comes with its rule.

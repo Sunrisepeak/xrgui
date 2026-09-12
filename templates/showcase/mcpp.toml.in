@@ -19,7 +19,8 @@ main              = "src/main.cpp"
 windows_subsystem = "windows"   # a GUI program: no console window on Windows
 
 # A consumer's toolchain applies to its dependencies, and xrgui is built with
-# this clang on Linux (gcc has not been tried). On Windows the default,
-# msvc@system, is what xrgui uses.
+# this clang on Linux and macOS (gcc has not been tried). On Windows the
+# default, msvc@system, is what xrgui uses.
 [toolchain]
 linux = "llvm@22.1.8"
+macos = "llvm@22.1.8"
