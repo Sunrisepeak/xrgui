@@ -10,6 +10,7 @@ export import mo_yanxi.math.vector2;
 export import mo_yanxi.gui.layout.policies;
 export import align;
 export import mo_yanxi.handle_wrapper;
+import mo_yanxi.functional;
 
 namespace mo_yanxi::gui::tooltip{
 
@@ -122,7 +123,7 @@ protected:
 	~spawner_func_wrapped() = default;
 
 private:
-	using builder_type = std::move_only_function<elem_ptr(T&, scene&)>;
+	using builder_type = mo_yanxi::move_only_function<elem_ptr(T&, scene&)>;
 	builder_type toolTipBuilder_{};
 
 public:

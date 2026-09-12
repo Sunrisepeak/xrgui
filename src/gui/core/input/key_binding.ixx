@@ -96,12 +96,14 @@ export
         return std::bit_cast<key_binding<ParamTy...>>(*this);
     }
 
+    // reinterpret_cast: object pointer to function pointer is not a standard
+    // conversion (MSVC allowed the static_cast as an extension).
     template <typename ... ParamTy>
     binding_return any_key_binding::cast_and_exec(key_set actual, float press_dur, ParamTy... args) const{
         CHECKED_ASSUME(func != nullptr);
         CHECKED_ASSUME(actual.key_code == this->key_code);
 
-        return static_cast<typename key_binding<ParamTy...>::function_ptr>(func)(actual, press_dur, std::forward<ParamTy>(args)...);
+        return reinterpret_cast<typename key_binding<ParamTy...>::function_ptr>(func)(actual, press_dur, std::forward<ParamTy>(args)...);
     }
 
     export
@@ -127,7 +129,7 @@ export
         template <typename ... ParamTy>
         FORCE_INLINE void cast_and_exec(math::vec2 pos, ParamTy... args) const{
             CHECKED_ASSUME(func != nullptr);
-            return static_cast<function_ptr<ParamTy...>>(func)(pos, std::forward<ParamTy>(args)...);
+            return reinterpret_cast<function_ptr<ParamTy...>>(func)(pos, std::forward<ParamTy>(args)...);
         }
 
         bool operator==(const pos_binding&) const noexcept = default;
@@ -154,7 +156,7 @@ export
         template <typename ... ParamTy>
         FORCE_INLINE void cast_and_exec(bool inbounded, math::vec2 pos, ParamTy... args) const{
             CHECKED_ASSUME(func != nullptr);
-            return static_cast<function_ptr<ParamTy...>>(func)(inbounded, pos, std::forward<ParamTy>(args)...);
+            return reinterpret_cast<function_ptr<ParamTy...>>(func)(inbounded, pos, std::forward<ParamTy>(args)...);
         }
 
         bool operator==(const inbound_binding&) const noexcept = default;

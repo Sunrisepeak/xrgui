@@ -1,5 +1,10 @@
 module;
 
+// See input_event_queue.ixx: without the explicit declaration this unit
+// gets, clang reports aligned operator new as ambiguous between libc++'s
+// (through `import std`) and the one implicitly declared here.
+#include <new>
+
 #include <vulkan/vulkan.h>
 #include <vk_mem_alloc.h>
 #include <cassert>

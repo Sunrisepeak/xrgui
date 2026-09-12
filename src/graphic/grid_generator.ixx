@@ -8,6 +8,7 @@ export module mo_yanxi.graphic.grid_generator;
 export import mo_yanxi.math.vector2;
 export import mo_yanxi.math.rect_ortho;
 import std;
+import mo_yanxi.views;
 
 namespace mo_yanxi::graphic{
 	export
@@ -33,13 +34,13 @@ namespace mo_yanxi::graphic{
 			constexpr auto sentinel = side_size - 1;
 			std::array<size_type, edgeSize * 4> rst{};
 
-			for(const auto [yIdx, y] : std::array<size_type, 2>{0, sentinel} | std::views::enumerate){
+			for(const auto [yIdx, y] : std::array<size_type, 2>{0, sentinel} | mo_yanxi::views::enumerate){
 				for(size_type x = 1; x < sentinel; ++x){
 					rst[(x - 1) + edgeSize * yIdx] = pos_to_index(x, y);
 				}
 			}
 
-			for(const auto [xIdx, x] : std::array<size_type, 2>{0, sentinel} | std::views::enumerate){
+			for(const auto [xIdx, x] : std::array<size_type, 2>{0, sentinel} | mo_yanxi::views::enumerate){
 				for(size_type y = 1; y < sentinel; ++y){
 					rst[(y - 1) + edgeSize * (xIdx + 2)] = pos_to_index(x, y);
 				}
@@ -90,13 +91,13 @@ namespace mo_yanxi::graphic{
 		}
 
 		template <std::ranges::random_access_range Rng>
-			requires (std::same_as<std::ranges::range_const_reference_t<Rng>, const math::vector2<T>&>)
+			requires (std::same_as<mo_yanxi::ranges::range_const_reference_t<Rng>, const math::vector2<T>&>)
 		[[nodiscard]] static constexpr math::vector2<T> vertex_at(const Rng& anchorPoints, const size_type x, const size_type y) noexcept{
 			return {anchorPoints[x].x, anchorPoints[y].y};
 		}
 
 		template <std::ranges::random_access_range Rng>
-			requires (std::same_as<std::ranges::range_const_reference_t<Rng>, const math::vector2<T>&>)
+			requires (std::same_as<mo_yanxi::ranges::range_const_reference_t<Rng>, const math::vector2<T>&>)
 		[[nodiscard]] static constexpr math::rect_ortho<T> rectangle_at(const Rng& anchorPoints, const size_type x, const size_type y) noexcept{
 			auto v00 = grid_generator::vertex_at<Rng>(anchorPoints, x, y);
 			auto v11 = grid_generator::vertex_at<Rng>(anchorPoints, x + 1, y + 1);

@@ -118,12 +118,17 @@ struct heap_allocator : mi_heap_stl_allocator<T>{
     auto select_on_container_copy_construction() const { return *this; }
 
 
-    template<class T1, class T2>
-    friend bool operator==(const heap_allocator<T1>& lhs, const heap_allocator<T2>& rhs) noexcept{
-        return static_cast<const mi_heap_stl_allocator<T1>&>(lhs) == static_cast<const mi_heap_stl_allocator<T2>&>(rhs);
-    }
-
 };
+
+// Outside the class: a friend function template defined inside a class
+// template is redefined by every instantiation (clang and GCC reject it, MSVC
+// accepts it). is_equal rather than ==, because mimalloc's operator== lives in
+// this module's global module fragment and is not visible to importers.
+export
+template <class T1, class T2>
+bool operator==(const heap_allocator<T1>& lhs, const heap_allocator<T2>& rhs) noexcept{
+    return lhs.is_equal(rhs);
+}
 
 export
 template <typename T = std::byte>
@@ -138,11 +143,16 @@ struct unvs_allocator : mi_stl_allocator<T>{
     template <class U> struct rebind { typedef unvs_allocator<U> other; };
     auto select_on_container_copy_construction() const { return *this; }
 
-    template<class T1, class T2>
-    friend bool operator==(const unvs_allocator<T1>& lhs, const unvs_allocator<T2>& rhs) noexcept{
-        return static_cast<const mi_stl_allocator<T1>&>(lhs) == static_cast<const mi_stl_allocator<T2>&>(rhs);
-    }
 };
+
+// Outside the class for the same reason. Always equal, as mimalloc's own
+// operator== for mi_stl_allocator is: every instance allocates from the shared
+// heap.
+export
+template <class T1, class T2>
+bool operator==(const unvs_allocator<T1>&, const unvs_allocator<T2>&) noexcept{
+    return true;
+}
 
 export
 template <typename T, std::size_t align>

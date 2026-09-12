@@ -7,6 +7,7 @@ export module mo_yanxi.graphic.compositor.post_process_pass_with_ubo;
 import std;
 import mo_yanxi.meta_programming;
 export import mo_yanxi.graphic.compositor.post_process_pass;
+import mo_yanxi.vk.util;
 
 namespace mo_yanxi::graphic::compositor{
 export

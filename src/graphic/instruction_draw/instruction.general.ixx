@@ -443,7 +443,9 @@ struct emit_t{
 	FORCE_INLINE constexpr decltype(auto) operator()(Sink& sink, Instr&& instr) const
 		noexcept(noexcept(sink(std::forward<Instr>(instr)))){
 		ATTR_FORCEINLINE_SENTENCE
-		ADAPTED_MUST_TAIL
+		// No ADAPTED_MUST_TAIL: [[clang::musttail]] requires the callee's
+		// signature to match the caller's, and it does not here (MSVC accepted
+		// the attribute silently).
 		return sink(std::forward<Instr>(instr));
 	}
 
@@ -452,7 +454,7 @@ struct emit_t{
 	FORCE_INLINE constexpr decltype(auto) operator()(Sink& sink, Instr&& instr) const
 		noexcept(noexcept(std::forward<Instr>(instr)(*this, sink))){
 		ATTR_FORCEINLINE_SENTENCE
-		ADAPTED_MUST_TAIL
+		// No ADAPTED_MUST_TAIL, as above.
 		return std::forward<Instr>(instr)(*this, sink);
 	}
 };
@@ -632,8 +634,12 @@ struct alignas(instr_required_align) quad_group{
 
 
 
+	// `!std::convertible_to<const Ty&, quad_group>` was dropped from the
+	// constraint: it asks about the class being defined, and clang reports the
+	// satisfaction as depending on itself. The overloads above already exclude
+	// what it excluded.
 	template <typename Ty>
-		requires (std::constructible_from<T, const Ty&> && !std::convertible_to<const Ty&, quad_group> && !spec_of<Ty, quad_group>)
+		requires (std::constructible_from<T, const Ty&> && !spec_of<Ty, quad_group>)
 	[[nodiscard]] FORCE_INLINE explicit(false) constexpr quad_group(const Ty& v) noexcept : values{T(v), T(v), T(v), T(v)}{}
 
 	template <typename Ty>

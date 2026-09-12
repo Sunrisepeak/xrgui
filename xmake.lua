@@ -106,6 +106,11 @@ local function add_xrgui_core_deps()
     add_files("./src/**.cpp")
     add_files("./src/**.ixx", {public = true})
 
+    -- Two module interfaces kept beside the mcpp manifest: mo_yanxi.views and
+    -- mo_yanxi.functional shim C++23 facilities libc++ lacks and resolve to
+    -- std:: where the library has them (MSVC's does). src/ imports them.
+    add_files("./mcpp/mo_yanxi_utility/views.ixx", "./mcpp/mo_yanxi_utility/functional.ixx", {public = true})
+
     --add_cxflags("/wd4267", "/wd4244", "/wd4305", {tools = {"cl", "clang_cl"}})
 end
 

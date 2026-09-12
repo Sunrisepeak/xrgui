@@ -20,6 +20,7 @@ import mo_yanxi.math.vector2;
 import mo_yanxi.raw_byte_buffer;
 import std;
 import magic_enum;
+import mo_yanxi.views;
 
 
 bool operator==(const VkExtent3D lhs, const VkExtent3D rhs) noexcept{
@@ -859,7 +860,7 @@ public:
 
 private:
 	auto get_valid_of(slot_to_data_index pass_logical_socket::* which) const noexcept{
-		return (this->*which) | std::views::enumerate | std::views::filter([](auto&& t){
+		return (this->*which) | mo_yanxi::views::enumerate | std::views::filter([](auto&& t){
 			auto&& [idx, v] = t;
 			return v != no_slot;
 		});
@@ -924,7 +925,7 @@ public:
 	[[nodiscard]] gch::small_vector<slot_pair> get_inout_indices() const{
 		gch::small_vector<slot_pair> rst{};
 
-		for(auto&& [idx, data_idx] : output_slots | std::views::enumerate){
+		for(auto&& [idx, data_idx] : output_slots | mo_yanxi::views::enumerate){
 			if(auto itr = std::ranges::find(input_slots, data_idx); itr != input_slots.end()){
 				rst.push_back({
 						static_cast<unsigned>(itr - input_slots.begin()),

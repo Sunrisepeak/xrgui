@@ -51,7 +51,7 @@ public:
 	template <typename... CtxArgs>
 		requires ((!std::derived_from<CtxArgs, key_mapping_interface>) && ...)
 	key_mapping<CtxArgs...>& register_sub_input(const std::string_view mappingName){
-		std::pair<decltype(subInputs)::iterator, bool> rst = subInputs.try_emplace(mappingName);
+		std::pair<typename decltype(subInputs)::iterator, bool> rst = subInputs.try_emplace(mappingName);
 		if(rst.second){
 			rst.first->second = std::make_unique<key_mapping<CtxArgs...>>(memory_resource_.get());
 		}
@@ -60,7 +60,7 @@ public:
 	}
 	template <std::derived_from<key_mapping_interface> Mapping>
 	Mapping& register_sub_input(const std::string_view mappingName){
-		std::pair<decltype(subInputs)::iterator, bool> rst = subInputs.try_emplace(mappingName);
+		std::pair<typename decltype(subInputs)::iterator, bool> rst = subInputs.try_emplace(mappingName);
 		if(rst.second){
 			rst.first->second = std::make_unique<Mapping>(memory_resource_.get());
 		}

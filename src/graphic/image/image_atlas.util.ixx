@@ -19,6 +19,10 @@ import mo_yanxi.allocator2d;
 import mo_yanxi.log;
 
 import std;
+// vk::allocator is named directly below. Module visibility is not
+// transitive: a module that USES a name must import the module that
+// exports it, however it happened to become visible before.
+import mo_yanxi.vk.util;
 
 namespace mo_yanxi::graphic{
 export struct sub_page;

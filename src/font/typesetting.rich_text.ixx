@@ -68,24 +68,9 @@ struct rich_text_fallback_style {
 	rich_text_token::wrap_frame_type wrap_frame_type{rich_text_token::wrap_frame_type::none};
 
 	// Written out rather than `= default`, and comparing `features` through its
-	// data pointer rather than through itself. Both halves are about the same
-	// thing: nothing outside this file can see <gch/small_vector.hpp>.
-	//
-	// It is included in the global module fragment above, but a declaration the
-	// purview never names is discarded rather than written into the BMI, and gch
-	// spells both the container's operator== and its iterator's operator-(a, b)
-	// as free function templates rather than hidden friends. So an importer that
-	// compares two of these -- or two layout_configs, which hold one -- has
-	// neither. A defaulted operator== would be synthesized there and fail; so
-	// would `lhs.features == rhs.features`, because gch::operator== is itself a
-	// template and instantiates where it is called, taking std::equal and its
-	// need for operator-(a, b) with it. MSVC 14.52 stopped leaking the
-	// declarations that used to make both work by accident, and reports the
-	// wreckage against <xutility> and ui.util.ixx rather than against anything
-	// a reader would think to look at.
-	//
-	// const hb_feature_t* has none of that problem, and the two spellings mean
-	// the same thing.
+	// data pointer: <gch/small_vector.hpp> is in this file's global module
+	// fragment, so an importer sees neither gch's operator== nor its iterator's
+	// operator-, and a defaulted operator== would be synthesised there.
 	[[nodiscard]] constexpr friend bool operator==(
 		const rich_text_fallback_style& lhs, const rich_text_fallback_style& rhs) noexcept{
 		return lhs.offset == rhs.offset

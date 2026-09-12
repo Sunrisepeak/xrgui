@@ -7,6 +7,8 @@ export module mo_yanxi.gui.infrastructure:object_pool;
 
 import std;
 import mo_yanxi.type_register;
+// For the explicit instantiation at the bottom of this file.
+import mo_yanxi.gui.alloc;
 
 
 namespace mo_yanxi::gui{
@@ -257,5 +259,14 @@ public:
 		return acquire_pool<T>().acquire(std::forward<Args>(args)...);
 	}
 };
+
+// Instantiated here, in the translation unit that includes <gtl/phmap.hpp>:
+// clang cannot resolve raw_hash_set's `friend struct HashtableDebugAccess`
+// when the specialisation is first instantiated from another unit. scene.ixx
+// holds the one specialisation this project uses. MSVC 14.52 must NOT see the
+// line: with it, an importer's `acquire<T>()` fails with C2672.
+#if defined(__clang__)
+template struct any_pool<false, mr::unvs_allocator<std::byte>>;
+#endif
 
 }

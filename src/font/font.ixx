@@ -590,9 +590,13 @@ private:
 		return read_file(file);
 	}
 
+	// Delegates rather than opening the stream itself: constructing an ifstream
+	// from a `const wchar_t*` is an MSVC extension. The standard gives
+	// basic_ifstream a `const char*` and a `filesystem::path` constructor and no
+	// wide one, so libc++ rejects it -- and filesystem::path is the portable way
+	// to carry a wide path anyway, since it owns the encoding conversion.
 	[[nodiscard]] static std::vector<std::byte> read_file(const wchar_t* fontpath) {
-		std::ifstream file(fontpath, std::ios::binary | std::ios::ate);
-		return read_file(file);
+		return read_file(std::filesystem::path{fontpath});
 	}
 
 	[[nodiscard]] static std::vector<std::byte> read_file(const std::filesystem::path& fontpath) {

@@ -61,7 +61,7 @@ struct trace_entry;
 
 struct arrow_button : elem{
 protected:
-	util::animator<float, .12f, 0, 0> rotate_animator{};
+	util::animator<float, .12f, 0.f, 0.f> rotate_animator{};
 
 public:
 	trace_entry& get_trace() const noexcept;

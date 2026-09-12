@@ -28,8 +28,13 @@ struct create_handle_base{
 	struct promise_type{
 		[[nodiscard]] promise_type() = default;
 
-		create_handle_base get_return_object(){
-			return create_handle_base{handle::from_promise(*this)};
+		// The bare handle, not a create_handle_base: the return object lives in
+		// the coroutine frame, and a create_handle_base there was a second owner
+		// whose destructor resumed the frame being destroyed (SEGV on clang;
+		// MSVC happened to destroy it in a surviving order). The caller's
+		// create_handle is the only owner.
+		handle get_return_object(){
+			return handle::from_promise(*this);
 		}
 
 		[[nodiscard]] static auto initial_suspend() noexcept{ return std::suspend_never{}; }

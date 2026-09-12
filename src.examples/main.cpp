@@ -5,6 +5,7 @@ import std;
 
 import mo_yanxi.vk;
 import mo_yanxi.vk.cmd;
+import mo_yanxi.vk.util;   // enable_validation_layers; clang requires the import that MSVC let through
 
 import mo_yanxi.backend.vulkan.context;
 import mo_yanxi.backend.glfw.window;
@@ -143,6 +144,9 @@ void prepare(mo_yanxi::gui::cfg::render_context& gui_context){
 
 	auto& ctx = gui_context.context();
 	const auto shader_spv_path = std::filesystem::current_path().append("assets/shader/spv").make_preferred();
+	auto shader = [&](std::string_view file){
+		return vk::shader_module{ctx.get_device(), shader_spv_path / file};
+	};
 	auto renderer_create_bundle = gui_context.make_renderer_create_info();
 	backend::vulkan::renderer renderer{std::move(renderer_create_bundle.create_info)};
 	auto& image_atlas = gui_context.image_atlas();
@@ -154,26 +158,14 @@ void prepare(mo_yanxi::gui::cfg::render_context& gui_context){
 	log::info({"Compositor"}, "initialize");
 
 	compositor::manager manager{ctx.get_allocator()};
-	compositor::compute_shader_info shader_filter_high_light{
-		vk::shader_module{ctx.get_device(), shader_spv_path / "post_process.highlight_extract.spv"}
-	};
-	compositor::compute_shader_info shader_merge{
-		vk::shader_module{ctx.get_device(), shader_spv_path / "ui.merge.spv"}
-	};
-	vk::shader_module shader_present_vert{
-		ctx.get_device(), shader_spv_path / "post_process.fullscreen_present.vert.spv"
-	};
-	vk::shader_module shader_present_frag{
-		ctx.get_device(), shader_spv_path / "post_process.fullscreen_present.frag.spv"
-	};
+	compositor::compute_shader_info shader_filter_high_light{shader("post_process.highlight_extract.spv")};
+	compositor::compute_shader_info shader_merge{shader("ui.merge.spv")};
+	vk::shader_module shader_present_vert{shader("post_process.fullscreen_present.vert.spv")};
+	vk::shader_module shader_present_frag{shader("post_process.fullscreen_present.frag.spv")};
 
 	vk::sampler sampler_blit{ctx.get_device(), vk::preset::default_blit_sampler};
-	compositor::compute_shader_info shader_bloom{
-		vk::shader_module{ctx.get_device(), shader_spv_path / "post_process.bloom.spv"}
-	};
-	auto make_bloom_shader = [&]{
-		return vk::shader_module{ctx.get_device(), shader_spv_path / "post_process.bloom.spv"};
-	};
+	compositor::compute_shader_info shader_bloom{shader("post_process.bloom.spv")};
+	auto make_bloom_shader = [&]{ return shader("post_process.bloom.spv"); };
 
 	auto& ui_input_base = manager.add_external_resource(compositor::resource_entity_external{
 			compositor::image_entity{}, compositor::resource_dependency{
