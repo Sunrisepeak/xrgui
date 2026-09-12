@@ -279,19 +279,25 @@ jobs:
         if: matrix.origin == 'managed'
         shell: pwsh
         run: |
-          $before = Get-Content mcpp.toml -Raw
-          $after = $before -replace 'windows = "msvc@system"', 'windows = "msvc@${{ env.MSVC_TOOLSET }}"'
+          # Both manifests that name a toolchain: the root, and the icon tool
+          # under mcpp/, which mcpp builds as a separate host sub-build that
+          # resolves its OWN [toolchain]. Left at msvc@system there, this leg
+          # -- which has no Visual Studio -- cannot build the tool.
+          foreach ($m in @("mcpp.toml", "mcpp/svg_outline/mcpp.toml")) {
+              $before = Get-Content $m -Raw
+              $after = $before -replace 'windows\s*=\s*"msvc@system"', 'windows = "msvc@${{ env.MSVC_TOOLSET }}"'
 
-          # ASSERT THE EDIT. Without this, a manifest that stopped saying
-          # `msvc@system` -- renamed key, reformatted line, anything -- turns
-          # this leg into a second copy of the system leg that passes while
-          # proving nothing. A test that cannot fail is the failure.
-          if ($after -eq $before) {
-              Write-Error "mcpp.toml has no `windows = ""msvc@system""` line to replace; this leg would silently duplicate the system leg"
-              exit 1
+              # ASSERT THE EDIT. Without this, a manifest that stopped saying
+              # `msvc@system` -- renamed key, reformatted line, anything -- turns
+              # this leg into a second copy of the system leg that passes while
+              # proving nothing. A test that cannot fail is the failure.
+              if ($after -eq $before) {
+                  Write-Error "$m has no `windows = ""msvc@system""` line to replace; this leg would silently duplicate the system leg"
+                  exit 1
+              }
+              Set-Content $m $after -NoNewline
+              Select-String -Path $m -Pattern '^windows\s*=' | ForEach-Object { Write-Host "$m : $($_.Line)" }
           }
-          Set-Content mcpp.toml $after -NoNewline
-          Select-String -Path mcpp.toml -Pattern '^windows = ' | ForEach-Object { Write-Host $_.Line }
 
           # Same variable the system leg fills from vcvars, so the cache key and
           # the assertion below are written once for both. Here it is a literal
