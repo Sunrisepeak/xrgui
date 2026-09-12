@@ -225,6 +225,8 @@ if is_host_project then
 
         add_files("src.examples/**.ixx", {public = true})
         add_files("src.examples/**.cpp")
+        -- The entry point is the mcpp template's; the examples are the templates.
+        add_files("templates/showcase/src/main.cpp")
     target_end()
 
     target("xrgui.hello")
@@ -234,7 +236,7 @@ if is_host_project then
 
         add_xrgui_default_stack()
 
-        add_files("src.hello/**.cpp")
+        add_files("templates/hello/src/main.cpp")
     target_end()
 
     target("xrgui.tests")

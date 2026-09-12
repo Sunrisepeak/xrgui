@@ -9,6 +9,7 @@ description = "A GUI framework on C++23 modules and Vulkan"
 license     = "BSD-2-Clause"
 authors     = ["MoYanxi"]
 repo        = "https://github.com/Yuria-Shikibe/xrgui"
+accelerators = ["vulkan"]   # a consumer names `accel = "vulkan1.3"`; templates/ do
 
 [build]
 module_extensions = [".ixx"]            # MSVC spells module interfaces .ixx
@@ -127,15 +128,18 @@ plugins = { version = "0.7.1", features = ["rules-slang", "dist-appimage", "dist
 [build-dependencies]
 svg_outline = { path = "mcpp/svg_outline", tools = ["svg-outline"] }
 
-# GUI programs: no console window on Windows. Nothing changes elsewhere.
+# The two programs' entry points live under templates/: the same files are
+# what `mcpp new <app> --template xrgui:hello` (or `:showcase`) copies into a
+# new project, so the examples ARE the templates. GUI programs get no console
+# window on Windows; nothing changes elsewhere.
 [targets.xrgui_hello]
 kind              = "bin"
-main              = "src.hello/main.cpp"
+main              = "templates/hello/src/main.cpp"
 windows_subsystem = "windows"
 
 [targets.xrgui_example]
 kind              = "bin"
-main              = "src.examples/main.cpp"
+main              = "templates/showcase/src/main.cpp"
 required_features = ["examples"]
 windows_subsystem = "windows"
 
@@ -148,8 +152,7 @@ required_features = ["tests"]
 
 [features]
 default  = []
-examples = { sources = ["src.examples/**/*.ixx", "src.examples/**/*.cpp",
-                        "!src.examples/main.cpp"] }
+examples = { sources = ["src.examples/**/*.ixx", "src.examples/**/*.cpp"] }
 tests    = { sources = ["src.tests/**/*.cpp", "!src.tests/main.cpp"] }
 
 [feature-deps.tests]

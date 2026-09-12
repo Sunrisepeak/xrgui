@@ -1,0 +1,23 @@
+# {{project.name}} -- generated from {{self.name}}@{{self.version}}:hello
+[package]
+name    = "{{project.name}}"
+version = "0.1.0"
+
+[dependencies]
+{{self.name}} = "{{self.version}}"
+
+# The device axis is the root build's: a dependency's own `accel` does not set
+# it. Naming Vulkan here is what routes xrgui's shaders to the Slang rule.
+[build]
+accel = "vulkan1.3"
+
+[targets.{{project.name}}]
+kind              = "bin"
+main              = "src/main.cpp"
+windows_subsystem = "windows"   # a GUI program: no console window on Windows
+
+# A consumer's toolchain applies to its dependencies, and xrgui is built with
+# this clang on Linux (gcc has not been tried). On Windows the default,
+# msvc@system, is what xrgui uses.
+[toolchain]
+linux = "llvm@22.1.8"
