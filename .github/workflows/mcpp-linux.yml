@@ -5,10 +5,10 @@
 # build program does on every platform -- the Slang rule, the runtime deploy,
 # `mcpp pack` -- is exercised on the cheaper runner first.
 #
-# Everything comes from xlings/mcpp: the compiler is the `llvm@22.1.8` the
-# manifest pins, python and node are `[xlings.workspace]` entries, slang is
-# declared by the rule. This file installs one thing, mcpp, and asserts its
-# version because it is the thing under test.
+# Everything comes through mcpp: the compiler is the `llvm@22.1.8` the
+# manifest pins, slang is declared by the rule, the icon tool is built from
+# this repository. This file installs one thing, mcpp, and asserts its version
+# because it is the thing under test.
 name: mcpp (Linux / clang)
 
 env:
@@ -88,17 +88,6 @@ jobs:
 
       - name: mcpp — build the library and xrgui_hello
         run: mcpp build
-
-      # The icon generator is the one step left in build.mcpp whose exit
-      # status is not trustworthy (svg_normalize.py returns 0 when its npx
-      # child crashes), so assert on what it was supposed to produce. The
-      # shaders no longer need this: they are ninja edges and a failure fails
-      # the build.
-      - name: Assert generated icons exist
-        run: |
-          n=$(find properties/assets_raw/gen -name '*.svg' 2>/dev/null | wc -l)
-          echo "normalized icons: $n"
-          [ "$n" -gt 0 ] || { echo "build.mcpp produced no normalized icons"; exit 1; }
 
       - name: mcpp — build xrgui_example
         run: mcpp build --features examples

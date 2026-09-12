@@ -7,22 +7,18 @@
 //      one hunk exists to satisfy the scanner. mcpp has no mechanism for this;
 //      the patches' real home is the upstream repositories.
 //
-//   2. Icon normalization + bin2c. properties/assets_raw/svg_normalize.py
-//      (Python driving `npx oslllo-svg-fixer`) turns icons into normalized SVGs
-//      under properties/assets_raw/gen, which xmake's media.svg_to_bin rule and
-//      this file both turn into byte lists under MCPP_OUT_DIR/.assets/includes:
+//   2. Icons. One `source` action per file under properties/assets_raw/icons,
+//      running mcpp/svg_outline (built by mcpp as a host tool): the stroked
+//      icon becomes a filled one and lands as a byte list at
+//      MCPP_OUT_DIR/.assets/includes/<rel>.svg.h, to be #include'd INSIDE a
+//      `char[] = { ... }` initializer. This program writes the aggregate,
+//      assets_summary.h, which gui.assets.cpp includes: one
+//      `constexpr inline char[]` per icon, namespaced by directory -- the same
+//      names xmake's media.svg_to_bin rule produces from the potrace-traced
+//      copies under properties/assets_raw/gen.
 //
-//        <rel>.svg.h        one bin2c byte list per SVG, #include'd INSIDE a
-//                           `char[] = { ... }` initializer
-//        assets_summary.h   the aggregate gui.assets.cpp includes, one
-//                           `constexpr inline char[]` per SVG, namespaced by
-//                           the SVG's directory
-//
-//      The summary is written even with no SVGs: a fresh checkout has none,
-//      gui.assets.cpp only needs the header to EXIST, and that is what lets
-//      the tree build before the generator has ever run. Python and node come
-//      from [xlings.workspace]; if python is absent the step is skipped and
-//      mcpp::warning says so on the build that skipped it.
+//      The set of icons is known here, so the summary is complete at prepare
+//      time; the bytes arrive when the edges run, before any compile.
 //
 //   3. Shaders and distributables, both from mcpp:plugins. mcpp.rules.slang
 //      compiles every .slang the constrained glob in mcpp.toml routed here,
@@ -36,7 +32,8 @@
 //   * the runtime-data copy action  -> [runtime] deploy in mcpp.toml
 //   * the Windows system libraries  -> [target.windows.runtime] libraries
 //   * slang_builder.py + slangc     -> mcpp.rules.slang
-//   * PATH probing for tools        -> every tool is declared; mcpp provisions it
+//   * svg_normalize.py + npx        -> mcpp/svg_outline, one action per icon
+//   * PATH probing for tools        -> nothing here asks PATH for anything
 //
 // See .agents/docs/2026-09-12-mcpp-build-optimization.md for the reasoning.
 import mcpp;
@@ -67,9 +64,9 @@ void note(std::format_string<Args...> fmt, Args&&... args) {
 // Applies a patch to a checked-out submodule, idempotently.
 //
 // Here rather than as a CI step because that is what makes a local checkout and
-// CI take the same path -- the same reason the icon generator is here. A step
-// in one workflow file fixes the tree for one job on one platform; this runs
-// wherever `mcpp build` runs, which is what a Linux or macOS leg needs.
+// CI take the same path. A step in one workflow file fixes the tree for one
+// job on one platform; this runs wherever `mcpp build` runs, which is what a
+// Linux or macOS leg needs.
 //
 // build.mcpp runs during PREPARE, before the module scan, which is what lets a
 // patch that exists to satisfy the scanner work at all.
@@ -101,58 +98,6 @@ void apply_patch(const std::filesystem::path& repo, const std::filesystem::path&
     note("applied {}", patch.filename().string());
 }
 
-// The executable for a package declared in [xlings.workspace], through
-// mcpp::xpkg_dir -- an interface, so this program does not encode how the
-// store spells things.
-//
-// From the declared package's directory and never from PATH, because PATH lied
-// here twice: `python` on this box is 2.7.18 while the generator is Python 3,
-// and a tool on PATH was once an xlings shim owned by ANOTHER project that
-// printed "not installed in this subos" when run. Both were silent.
-//
-// Returns "" when the package is not declared or not installed. There is no
-// PATH fallback on purpose: mcpp provisions a declared package on first build
-// or (under --offline) refuses naming it, so an empty answer here means the
-// manifest changed, not that the machine is missing something.
-//
-// `names` are the spellings the package uses across platforms -- the Linux
-// python payload is `bin/python3`, the Windows one `python.exe` at its root --
-// so the lookup tries each name in `bin/` and at the root. Before this, the
-// Windows miss was covered by a PATH fallback, and removing the fallback
-// showed the miss: a build with no icons and an empty assets_summary.h.
-std::string xpkg_tool(const char* ns, const char* pkg,
-                      std::initializer_list<std::string_view> names) {
-    const char* dir = mcpp::xpkg_dir(ns, pkg);
-    if (dir == nullptr || *dir == '\0') return {};
-
-    for (const auto exe : names) {
-        for (const char* sub : {"bin", ""}) {
-            auto candidate = std::filesystem::path{dir} / sub / exe;
-#ifdef _WIN32
-            candidate.replace_extension(".exe");
-#endif
-            std::error_code ec;
-            if (std::filesystem::exists(candidate, ec)) {
-                return candidate.string();
-            }
-        }
-    }
-    return {};
-}
-
-// Runs the icon generator. A failure is reported through mcpp::warning -- the
-// channel a successful build prints -- but does not stop the build: the tree
-// has to build without the generator (the empty summary below is for that),
-// and its exit status is not trustworthy anyway, svg_normalize.py returns 0
-// when its npx child crashes. CI asserts on the OUTPUTS, which is the only
-// signal that means anything here.
-void run_generator(std::string_view what, const std::string& cmd) {
-    note("{} ...", what);
-    if (const int rc = std::system(cmd.c_str()); rc != 0) {
-        mcpp::warning(std::format("{} exited {}: {}", what, rc, cmd).c_str());
-    }
-}
-
 std::string sanitize(std::string_view s) {
     std::string out;
     out.reserve(s.size());
@@ -173,26 +118,6 @@ std::string namespace_of(const std::filesystem::path& rel_dir) {
     return out;
 }
 
-// Write `<file>` as a comma-separated byte list. The result is #include'd
-// inside a braced initializer, so it must NOT carry braces of its own.
-bool write_bin2c(const std::filesystem::path& src, const std::filesystem::path& dst) {
-    std::ifstream in(src, std::ios::binary);
-    if (!in) return false;
-
-    std::filesystem::create_directories(dst.parent_path());
-    std::ofstream out(dst, std::ios::trunc);
-    if (!out) return false;
-
-    char byte{};
-    for (std::size_t n = 0; in.get(byte); ++n) {
-        if (n != 0) out << ',';
-        if (n % 16 == 0) out << '\n';
-        out << static_cast<int>(static_cast<unsigned char>(byte));
-    }
-    out << '\n';
-    return true;
-}
-
 // Only rewrite when the content actually differs: the summary is an input to
 // every TU that includes it, so touching it on every build would defeat
 // incremental compilation.
@@ -210,7 +135,6 @@ void write_if_changed(const std::filesystem::path& path, std::string_view conten
 
 int main() {
     const std::filesystem::path root = mcpp::manifest_dir();
-    const std::filesystem::path src_base = root / "properties/assets_raw/gen";
     const std::filesystem::path out_dir =
         std::filesystem::path{mcpp::out_dir()} / ".assets/includes";
 
@@ -246,59 +170,56 @@ int main() {
     apply_patch(root / "external/mo_yanxi_vulkan_wrapper/external/mo_yanxi_utility",
                 root / "mcpp/patches/mo_yanxi_utility.patch");
 
-    // ---- icon normalization (xmake's xrgui.gen_icon) ----------------------
+    // ---- icons: one action each through mcpp/svg_outline --------------------
     //
-    // python comes from [xlings.workspace] through mcpp::xpkg_dir; the script
-    // spawns `npx` by name, which resolves to the declared node because mcpp
-    // puts the project's environment at the front of PATH. Skipped, and SAID,
-    // when python is not provisioned: mcpp::warning is the one channel a
-    // successful build prints.
-    const std::string python = xpkg_tool("xim", "python", {"python3", "python"});
-    const auto icons_in = root / "properties/assets_raw/icons";
-    const auto script   = root / "properties/assets_raw/svg_normalize.py";
-    if (python.empty()) {
-        mcpp::warning("xim:python is not provisioned, so the icons were not normalized; "
-                      "properties/assets_raw/gen keeps whatever it had");
-    } else if (std::filesystem::is_directory(icons_in) && std::filesystem::exists(script)) {
-        run_generator("normalizing icons", std::format(
-            "{} \"{}\" -i \"{}\" -o \"{}\"",
-            python, script.string(), icons_in.string(),
-            (root / "properties/assets_raw/gen/icons").string()));
-    }
+    // The SET of files matters, not just their contents: adding an icon has to
+    // regenerate the summary, and a plain rerun-if-changed on a directory would
+    // not catch it. Each file's CONTENT is an action input, so editing one
+    // reruns that edge and nothing else.
     mcpp::rerun_if_changed_glob("properties/assets_raw/icons/**/*.svg");
 
+    // Paths are taken relative to assets_raw, not to icons/, so the leading
+    // `icons` directory stays in the header path and the namespace:
+    // gui.assets.cpp names `svgs::icons::basic::...`, as it did when the input
+    // tree was assets_raw/gen/icons.
+    const auto assets_raw = root / "properties/assets_raw";
+    const auto icons_in   = assets_raw / "icons";
     std::vector<std::filesystem::path> svgs;
-    if (std::filesystem::is_directory(src_base)) {
-        for (const auto& e : std::filesystem::recursive_directory_iterator{src_base}) {
-            if (e.is_regular_file() && e.path().extension() == ".svg") {
-                svgs.push_back(e.path());
-            }
+    if (std::filesystem::is_directory(icons_in)) {
+        for (const auto& e : std::filesystem::recursive_directory_iterator{icons_in}) {
+            if (e.is_regular_file() && e.path().extension() == ".svg") svgs.push_back(e.path());
         }
     }
     // Directory iteration order is unspecified; the summary must be stable or
     // its content hash flaps and every consumer rebuilds.
     std::ranges::sort(svgs);
 
-    std::string summary = "#pragma once\n";
+    const char* svg_outline = mcpp::dep_bin("svg_outline", "svg-outline");
+    if (!svgs.empty() && (svg_outline == nullptr || *svg_outline == '\0')) {
+        note("ERROR: the svg-outline tool was not built; is `tools = [\"svg-outline\"]` on the "
+             "mcpp/svg_outline edge in mcpp.toml?");
+        return 1;
+    }
 
+    std::string summary = "#pragma once\n";
     for (const auto& svg : svgs) {
-        const auto rel = std::filesystem::relative(svg, src_base);
+        const auto rel        = std::filesystem::relative(svg, assets_raw);
         const auto header_rel = std::filesystem::path{rel.string() + ".h"};
         const auto header_abs = out_dir / header_rel;
 
-        std::error_code ec;
-        const auto src_time = std::filesystem::last_write_time(svg, ec);
-        const auto dst_time = std::filesystem::last_write_time(header_abs, ec);
-        if (ec || !std::filesystem::exists(header_abs) || dst_time < src_time) {
-            if (!write_bin2c(svg, header_abs)) {
-                note("cannot convert {}", svg.string());
-                return 1;
-            }
-        }
+        // `source`: a header, ordered before every compile edge of this package.
+        const std::string id = "svg-outline:" + rel.generic_string();
+        mcpp::action a;
+        a.id   = id.c_str();
+        a.role = "source";
+        a.arg(svg_outline).arg(svg.string().c_str()).arg("--embed").arg(header_abs.string().c_str())
+         .input(svg.string().c_str())
+         .output(header_abs.string().c_str())
+         .submit();
 
         // Always spelled with '/' -- this string lands in a #include.
-        std::string inc = header_rel.generic_string();
-        const std::string ns = namespace_of(rel.parent_path());
+        const std::string inc = header_rel.generic_string();
+        const std::string ns  = namespace_of(rel.parent_path());
         const std::string var = sanitize(rel.filename().string());
 
         if (!ns.empty()) summary += std::format("namespace {} {{\n", ns);
@@ -320,12 +241,7 @@ int main() {
     // the generated tree.
     mcpp::include_dir(out_dir.string().c_str());
 
-    // The SET of files matters, not just their contents: adding an icon has to
-    // regenerate the summary, and a plain rerun-if-changed on a directory
-    // would not catch it.
-    mcpp::rerun_if_changed_glob("properties/assets_raw/gen/**/*.svg");
-
-    note("{} svg asset(s) -> {}", svgs.size(), out_dir.string());
+    note("{} icon(s) -> {}", svgs.size(), out_dir.string());
 
     // ---- shaders: mcpp.rules.slang ------------------------------------------
     //

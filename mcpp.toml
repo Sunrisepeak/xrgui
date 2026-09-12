@@ -199,6 +199,15 @@ neargye.magic_enum    = "0.9.8"
 [build-dependencies.mcpp]
 plugins = { version = "0.7.1", features = ["rules-slang", "dist-appimage", "dist-wix"], host-module = true }
 
+# The icon tool: a stroked SVG becomes a filled one, and its bytes a C
+# initializer. Built by mcpp for the build machine and cached globally; build.mcpp
+# runs it once per icon as a `source` action. It replaced svg_normalize.py +
+# `npx oslllo-svg-fixer`, which rasterised the icon and traced the bitmap back
+# with potrace -- python, node and a browser engine for an approximation of
+# geometry mcpp/svg_outline computes exactly.
+[build-dependencies]
+svg_outline = { path = "mcpp/svg_outline", tools = ["svg-outline"] }
+
 # ── Targets ────────────────────────────────────────────────────────────────
 # GUI programs: no console window on Windows (`/SUBSYSTEM:WINDOWS`, the
 # `main` entry kept through `/ENTRY:mainCRTStartup`). Nothing changes on other
@@ -292,29 +301,14 @@ linux = "llvm@22.1.8"
 
 # ── The build's tools ──────────────────────────────────────────────────────
 #
-# build.mcpp runs the icon generator, which is Python driving `npx` (node).
-#
-# Declared, not probed. Tools used to be found on PATH, and PATH lied twice on
-# one machine: its `python` was 2.7.18 while the script is Python 3, and a tool
-# on PATH was once an xlings shim owned by a DIFFERENT project that printed
-# "not installed in this subos" when run. Both were silent. Declaring a tool
-# makes its version a property of the project: mcpp provisions it on first
-# build and build.mcpp asks mcpp::xpkg_dir for its directory.
-#
-# node is reached differently: svg_normalize.py spawns `npx` by name. Because
-# this project declares `[xlings] subos`, mcpp runs build.mcpp with that
-# environment's bin at the front of PATH (2026.8.25.1+), so the declared node
-# is the one the script finds.
-#
-# slangc is NOT here: mcpp.rules.slang declares `xim:slang` itself, under the
-# feature that selects it and the vulkan accelerator this build names. Naming
-# it here would still work and would win over the rule's floor.
+# None declared. Every generator this build runs is compiled from this
+# repository (mcpp/svg_outline) or comes with a rule (mcpp.rules.slang declares
+# `xim:slang` itself, under the vulkan accelerator this build names). Tools
+# used to be found on PATH, and PATH lied twice on one machine -- a Python 2
+# `python`, a `slangc` that was another project's xlings shim -- so nothing
+# here asks PATH for anything.
 [xlings]
 subos = "default"
-
-[xlings.workspace]
-"xim:python" = "3.13.12"
-"xim:node"   = "24.20.0"
 
 [profile.release]
 opt   = 2

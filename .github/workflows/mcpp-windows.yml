@@ -8,10 +8,9 @@
 # xmake is not installed at all: its two asset tasks are thin wrappers around
 # Python scripts, and this job calls those scripts directly.
 #
-# Every tool this job needs except the Vulkan SDK and MSVC comes from xlings,
-# and only mcpp is installed by this file: node, python and slang are declared
-# by the manifest (or by the Slang rule it depends on) and mcpp provisions them
-# on the first build, from the same index it resolves everything else from.
+# Every tool this job needs except the Vulkan SDK and MSVC comes through mcpp,
+# and only mcpp is installed by this file: slang is declared by the Slang rule
+# and the icon tool is built from this repository, both on the first build.
 name: mcpp (Windows / MSVC)
 
 env:
@@ -392,17 +391,6 @@ jobs:
 
       - name: mcpp — build the library and xrgui_hello
         run: mcpp build
-
-      # The icon generator is the one step left in build.mcpp whose exit status
-      # is not trustworthy (svg_normalize.py returns 0 when its npx child
-      # crashes), so assert on what it was supposed to produce. The shaders no
-      # longer need this: they are ninja edges and a failure fails the build.
-      - name: Assert generated icons exist
-        shell: pwsh
-        run: |
-          $svg = @(Get-ChildItem properties/assets_raw/gen -Filter *.svg -Recurse -ErrorAction SilentlyContinue)
-          Write-Host "normalized icons: $($svg.Count)"
-          if ($svg.Count -eq 0) { Write-Error "build.mcpp produced no normalized icons"; exit 1 }
 
       - name: mcpp — build xrgui_example
         run: mcpp build --features examples

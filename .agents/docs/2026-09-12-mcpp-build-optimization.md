@@ -19,7 +19,7 @@
 | P1c | `linux-desktop` feature + `--features linux-desktop` | `[target.linux.dependencies]`,按解析后的目标求值 | 早已可用(docs/22) | **做**,manifest 里那句「mcpp 没有平台条件依赖表」已过时 |
 | P1d | `svg_normalize.py` 靠 PATH 上的 `npx`;CI 手工 `xlings install node python slang` | `[xlings.workspace]` 声明 `xim:node`;声明了 `[xlings] subos` 的工程,build.mcpp 的 PATH 前缀就是该环境的 bin | 2026.8.25.1 | **做**,最后一个宿主依赖 |
 | P2 | `slang_builder.py`:python 进程池、`--oneshot` 每次全量、失败只告警、`.spv` 落盘再按 cwd 加载 | `mcpp:plugins` 的 `rules-slang`:每个 shader 一条 ninja 边,`-depfile` 增量,失败即构建失败,slang 版本由规则自带;消费者 `import xrgui.shaders;`,存储方式(嵌入 / 落盘)是构建侧的开关 | 2026.9.7.1 + plugins **0.7.0**(已发布,索引 PR mcpplibs/mcpp-index#401) | **做**。上游缺口已在 0.7.0 补齐(§4.2);`render_context.cpp` 改成 accessor 调用,带宏守卫 |
-| P3 | bin2c + `assets_summary.h`(100 行) | `mcpp.tools.embed` | 2026.9.5.4 | **暂不做**:生成物类型与 `gui.assets.cpp` 的消费方式不匹配,收益小于改动 |
+| P3 | `svg_normalize.py` + `npx oslllo-svg-fixer`(python + node,栅格化再描摹) | 自写工具 `mcpp/svg_outline`,`tools = [...]` 构建,每个图标一条 action | 2026.8.5.1 | **做了**(§4.3):python 和 node 退出,bin2c 一并进工具 |
 | P4 | 没有打包;CI 直接上传 `target/**/bin/` | `mcpp pack`、`--format appimage/msi`、`[resources] icon`、`windows_subsystem` | 2026.9.11.1 / .12.2 | **全做**:`[package]` 元数据、`mcpp pack` 进 CI、AppImage、MSI、`.ico`、GUI 子系统 |
 | P5 | 只有 Windows CI | Linux 已经能编能跑(e1eb3b4) | — | **做**一条 Linux 腿,同时是 P2/P4 在 clang 上的验证场 |
 
@@ -328,27 +328,34 @@ module 调用面要 `MCPP_LANGUAGE_MODULES=1`,即 manifest 写 `[language] modul
 - 故意写坏一个 shader,`mcpp build` 非零退出并点名该边;
 - Windows 两条腿 + Linux(P5)跑 `xrgui_hello` 出图。
 
-### 4.3 P3:图标 —— 不换 `tools-embed`,理由记下来
+### 4.3 P3:图标 —— 一个 `mcpp/` 下的 C++ 工具,python 和 node 全部退出
 
-`mcpp.tools.embed` 看起来正好是 bin2c,但三点对不上:
+**原方案说不换 `tools-embed`,理由仍然成立**(它产出 `unsigned char`,消费方是上游代码
+要 `char[]`)。实施时换了个角度:问题不在 bin2c,在它前面那一步。
 
-1. 它产出 `inline constexpr unsigned char id[]` + `id_size`;`gui.assets.cpp` 把
-   `svgs::icons::side_bar_svg` 当 `char[]` 传给 `msdf_generator`。类型不同。
-2. 现在的 `assets_summary.h` 用 `__has_include` 让**没有任何图标**的树也能编 —— 这是
-   一个 fresh checkout 的正常状态。`tools-embed` 没有这种「缺席即空」的形状。
-3. `gui.assets.cpp` 是上游代码,xmake 那边的 `media.svg_to_bin` 规则产出的正是今天
-   这个形状。改消费方式就是改上游。
+`svg_normalize.py` 调的 `npx oslllo-svg-fixer` 做的是**栅格化再描摹**:依赖
+`oslllo-svg2` 和 `oslllo-potrace`,把 SVG 渲成位图再用 potrace 描回矢量。这就是它
+需要 node 和浏览器内核的原因,而结果是描摹出来的近似。需要它只因为 `msdf.cpp` 的
+`process_nsvg_basic` 只收填充路径,而 40 个图标里 38 个是描边画的(宽 3,圆角接头和
+端帽)。
 
-`group()` 产出的带命名空间 accessor 是更好的接口,但那是「改 xrgui 的资源系统」,
-不是「改构建」。留待以后,收益小于改动。
+`mcpp/svg_outline/` 是一个 `kind = "bin"` 的 path 包,`main.cpp` 一百多行,只依赖
+`compat.nanosvg`(xrgui 运行时读 SVG 用的同一个包):nanosvg 解析,贝塞尔按容差拍平,
+**每段一个胶囊轮廓**(矩形加两个半圆,全部同向),填充路径原样拷过去。不做布尔并:
+xrgui 调的 `generateMSDF` 用默认 `GeneratorConfig`,`overlapSupport = true`,同向重叠
+轮廓在非零环绕下就是并集,圆角接头由相邻胶囊的端帽自然得到。输出既可以是 SVG,也可以
+直接是 `--embed` 的字节列表,所以 bin2c 也搬进了工具。
 
-图标归一化本身也留在 prepare 期:它要跑在 bin2c 之前,而 bin2c 在 prepare 期。
-把归一化做成 action 会让 bin2c 读到还没生成的文件。脚本自带 `cache.json` 增量,
-加上 `rerun_if_changed_glob`,代价可接受。
+接法是文档 §4.2 里 protoc 那种:`[build-dependencies] svg_outline = { path =
+"mcpp/svg_outline", tools = ["svg-outline"] }`,mcpp 按宿主编译一次、全局缓存;
+`build.mcpp` 用 `mcpp::dep_bin` 拿到路径,每个图标一条 `role = "source"` 的 action,
+`assets_summary.h` 在 prepare 期就能写全(名字集合已知),字节在边跑完后到位。
 
-一件小事值得做:`svg_normalize.py` 在 npx 子进程崩掉时返回 0。让它把子进程的失败
-传出来(一行 Python),`run_generator` 的 WARNING 才有意义。这是 `properties/` 下
-的脚本,xmake 同样受益。
+代价与验证:胶囊比描摹曲线多边,容差 0.15(48 单位图标上约三分之一像素)下一个图标
+5 KB 左右,原来 1.5 KB;渲染对照 40 个图标逐个与原始描边的栅格结果一致(两处几何 bug
+就是这样抓到的:端帽半圆扫错方向、逆向弧的控制点没翻号)。7 个图标里有个别元素不是
+圆角接头,工具按圆角渲染并各报一次。`[xlings.workspace]` 清空,CI 里「图标存在」的
+断言删除:一条边失败就是构建失败。
 
 ### 4.4 P4:打包
 
@@ -557,6 +564,9 @@ mcpplibs/mcpp-index#402(三个包的 `runtime.libraries`)。
 - 两个 workflow 各只装一样东西(mcpp),其余由 manifest 供给;断言只剩「图标存在」
   和「工具链是钉的那个」,都是 mcpp 自己说不出口的事。
 - 没做的:把图标也交给插件(§4.3 的理由不变)。
+
+15. **图标生成器换成 `mcpp/svg_outline`**(见 §4.3):python、node、npx、
+    `svg_normalize.py` 全部退出 mcpp 这条链;`build.mcpp` 285 行。
 
 尚未定的:LTO、`bmi_schedule`。`bmi_schedule` 在本机量了一次,**读数无效**:
 `mcpp clean` 只清 `target/`,全局构建缓存仍然把绝大多数目标文件直接交回来
