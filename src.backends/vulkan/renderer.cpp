@@ -346,7 +346,11 @@ bool renderer::command_recording_context::apply_section_state_(
 				cache_clear_attachments_.push_back({
 						.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
 						.colorAttachment = i,
-						.clearValue = {.color = param}
+						// `.vk`, the union member itself: MSVC 14.52.36725 tries brace
+						// elision on `{.color = param}` before the conversion operator
+						// and fails on `float`; clang picks the conversion. The member
+						// needs neither.
+						.clearValue = {.color = param.vk}
 					});
 			});
 			VkClearRect rect{
