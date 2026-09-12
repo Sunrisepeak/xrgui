@@ -12,7 +12,23 @@ constexpr inline std::array device_extensions{
 
 		// VK_KHR_MAINTENANCE_5_EXTENSION_NAME,
 		// VK_KHR_MAINTENANCE_4_EXTENSION_NAME,
-		VK_KHR_MAINTENANCE_9_EXTENSION_NAME,
+		// VK_KHR_MAINTENANCE_9_EXTENSION_NAME,
+		//
+		// Commented out like its neighbours, and this DOES change what hardware
+		// this application accepts -- so it is a decision, not a cleanup.
+		//
+		// Nothing uses it. VkPhysicalDeviceMaintenance9Features appears nowhere in
+		// the tree and no call in it is gated on the extension; it sat in the
+		// REQUIRED list between four entries that are commented out, which is what
+		// an aspirational entry looks like.
+		//
+		// What requiring it cost: maintenance9 is a Vulkan 1.4-era extension, and on
+		// this machine NO device reports it -- an RTX 4080 on driver 550.144.03 and
+		// Mesa 25.2.8's llvmpipe both stop at maintenance6/8. Device selection
+		// rejected every candidate and the application exited without a window,
+		// for a capability it never called.
+		//
+		// Put it back the day something needs it, together with the code that does.
 		// VK_KHR_SHADER_UNTYPED_POINTERS_EXTENSION_NAME,
 
 		// VK_EXT_DESCRIPTOR_HEAP_EXTENSION_NAME,

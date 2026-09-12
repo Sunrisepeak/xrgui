@@ -291,7 +291,12 @@ public:
 	}
 
 	bool erase(std::string_view key) const noexcept {
-		return collection->map.erase(key) > 0;
+		// find-then-erase: heterogeneous erase is P2077 (C++23) and libc++ has
+		// not shipped it. Heterogeneous FIND is P0919 (C++20) and is there.
+		const auto it = collection->map.find(key);
+		if(it == collection->map.end()) return false;
+		collection->map.erase(it);
+		return true;
 	}
 
 	[[nodiscard]] bool empty() const noexcept {

@@ -16,6 +16,7 @@ export module mo_yanxi.platform.glfw;
 
 import std;
 import mo_yanxi.unicode;
+import mo_yanxi.functional;
 
 namespace mo_yanxi::platform {
 
@@ -64,7 +65,7 @@ struct native_ime_controller_impl;
 
 export class native_ime_controller {
 public:
-	using event_callback = std::move_only_function<void(native_ime_composition_event)>;
+	using event_callback = mo_yanxi::move_only_function<void(native_ime_composition_event)>;
 
 	[[nodiscard]] native_ime_controller() noexcept = default;
 	[[nodiscard]] explicit native_ime_controller(GLFWwindow* window, event_callback callback);

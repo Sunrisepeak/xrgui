@@ -1,5 +1,8 @@
 module;
 
+// Aligned operator new: see input_event_queue.ixx.
+#include <new>
+
 #include <hb.h>
 #include <hb-ft.h>
 #include <freetype/freetype.h>
@@ -536,9 +539,17 @@ private:
 		}
 
 		feature_stack_.clear();
-		feature_stack_ = {
-				config_.rich_text_fallback_style.features.begin(), config_.rich_text_fallback_style.features.end()
-			};
+		// Filled from the container's data pointer rather than its iterators.
+		// This is a member of a class template, so it instantiates in whichever
+		// module imports it -- and gch::small_vector_iterator's operator-(a, b),
+		// which vector's range constructor needs to size the allocation, is a
+		// free function template that no importer can see: gch's header is in a
+		// global module fragment, and what the purview never names is discarded
+		// rather than written into the BMI. Same reason, and same shape, as
+		// rich_text_fallback_style::operator==.
+		const auto& fallback_features = config_.rich_text_fallback_style.features;
+		feature_stack_.assign(fallback_features.data(),
+		                      fallback_features.data() + fallback_features.size());
 		feature_stack_.reserve(8);
 
 		if(config_.direction != layout_direction::deduced){
@@ -578,7 +589,7 @@ private:
 
 		(void)primary_face.set_size(snapped_base_size);
 		FT_Load_Char(primary_face, FT_ULong{' '}, FT_LOAD_NO_HINTING);
-		const math::vec2 base_scale_factor = state_.default_font_size / snapped_base_size.as<float>();
+		const math::vec2 base_scale_factor = state_.default_font_size / snapped_base_size.template as<float>();
 
 		if(this->is_vertical()){
 			state_.default_ascender = state_.default_font_size.x / 2.f;

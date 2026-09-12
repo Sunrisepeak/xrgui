@@ -1,9 +1,7 @@
 module;
 
 
-#ifndef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
 #include "plf_hive.h"
-#endif
 
 #include <mo_yanxi/adapted_attributes.hpp>
 #include <mo_yanxi/enum_operator_gen.hpp>
@@ -19,9 +17,6 @@ import mo_yanxi.utility;
 import mo_yanxi.meta_programming;
 import std;
 
-#ifdef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
-import <plf_hive.h>;
-#endif
 
 namespace mo_yanxi::input_handle{
 
@@ -102,11 +97,16 @@ export
     }
 
     template <typename ... ParamTy>
+    // reinterpret_cast, not static_cast. Converting between an object pointer
+    // (`void*`, the erased storage) and a function pointer is not a standard
+    // conversion -- static_cast has no such case and clang refuses it. It is a
+    // conditionally-supported reinterpret_cast, which every platform this
+    // project targets supports; MSVC accepted the static_cast as an extension.
     binding_return any_key_binding::cast_and_exec(key_set actual, float press_dur, ParamTy... args) const{
         CHECKED_ASSUME(func != nullptr);
         CHECKED_ASSUME(actual.key_code == this->key_code);
 
-        return static_cast<typename key_binding<ParamTy...>::function_ptr>(func)(actual, press_dur, std::forward<ParamTy>(args)...);
+        return reinterpret_cast<typename key_binding<ParamTy...>::function_ptr>(func)(actual, press_dur, std::forward<ParamTy>(args)...);
     }
 
     export
@@ -132,7 +132,7 @@ export
         template <typename ... ParamTy>
         FORCE_INLINE void cast_and_exec(math::vec2 pos, ParamTy... args) const{
             CHECKED_ASSUME(func != nullptr);
-            return static_cast<function_ptr<ParamTy...>>(func)(pos, std::forward<ParamTy>(args)...);
+            return reinterpret_cast<function_ptr<ParamTy...>>(func)(pos, std::forward<ParamTy>(args)...);
         }
 
         bool operator==(const pos_binding&) const noexcept = default;
@@ -159,7 +159,7 @@ export
         template <typename ... ParamTy>
         FORCE_INLINE void cast_and_exec(bool inbounded, math::vec2 pos, ParamTy... args) const{
             CHECKED_ASSUME(func != nullptr);
-            return static_cast<function_ptr<ParamTy...>>(func)(inbounded, pos, std::forward<ParamTy>(args)...);
+            return reinterpret_cast<function_ptr<ParamTy...>>(func)(inbounded, pos, std::forward<ParamTy>(args)...);
         }
 
         bool operator==(const inbound_binding&) const noexcept = default;

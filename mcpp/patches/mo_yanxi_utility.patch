@@ -1,0 +1,314 @@
+Portability fixes for mo_yanxi_utility, applied by build.mcpp.
+
+Reached as a nested submodule of mo_yanxi_vulkan_wrapper. Upstream is
+Yuria-Shikibe/mo_yanxi_utility and this belongs there.
+
+tile.ixx -- `const_iterator = std::const_iterator<tile_iterator>` and the
+reverse_iterator over it are guarded on __cpp_lib_ranges_as_const. P2278 is not
+in libc++, so the class did not compile there. They are guarded rather than
+reimplemented because nothing in this submodule and nothing in xrgui names
+either alias, so a local basic_const_iterator would be iterator boilerplate with
+no caller.
+
+Everything else routes standard-but-unshipped facilities through the
+mo_yanxi.views / mo_yanxi.functional shims that mcpp/mo_yanxi_utility adds
+beside this package's manifest:
+
+  tile.ixx                        views::stride, views::slide
+  latest/, legacy/, utility/math  std::move_only_function
+  interpolation.ixx               range_const_reference_t
+
+Those files are correct standard C++; libc++ has not caught up. Each reverts to
+`std::` on its own the day the #if in the shim stops choosing the fallback --
+no edit here is needed for that.
+
+diff --git a/src/latest/tile.ixx b/src/latest/tile.ixx
+index a9e33f6..3e5c06a 100644
+--- a/src/latest/tile.ixx
++++ b/src/latest/tile.ixx
+@@ -9,6 +9,7 @@ export module mo_yanxi.dim2.tile;
+ import ext.dim2.plane_concept;
+ import mo_yanxi.math.vector2;
+ import std;
++import mo_yanxi.views;
+ 
+ export namespace mo_yanxi::dim2{
+ 	// template <typename Derived, typename Base>
+@@ -338,13 +339,13 @@ export namespace mo_yanxi::dim2{
+ 		[[nodiscard]] constexpr auto column_at(const size_type columnIndex) const noexcept{
+ 			assert(columnIndex < width());
+ 
+-			return std::span<const value_type>{data() + columnIndex, size() - width() + 1} | std::views::stride(width());
++			return std::span<const value_type>{data() + columnIndex, size() - width() + 1} | mo_yanxi::views::stride(width());
+ 		}
+ 
+ 		[[nodiscard]] constexpr auto column_at(const size_type columnIndex) noexcept{
+ 			assert(columnIndex < width());
+ 
+-			return std::span<value_type>{data() + columnIndex, size() - width() + 1} | std::views::stride(width());
++			return std::span<value_type>{data() + columnIndex, size() - width() + 1} | mo_yanxi::views::stride(width());
+ 		}
+ 
+ 		[[nodiscard]] decltype(auto) sub_tile_adaptor_view(size_type x, size_type y, size_type w, size_type h) const noexcept{
+@@ -352,8 +353,8 @@ export namespace mo_yanxi::dim2{
+ 			assert(y + h <= height());
+ 
+ 			return
+-				std::span<const value_type>{data() + this->to_index(x, y), h * width()} | std::views::slide(w) |
+-				std::views::stride(width());
++				std::span<const value_type>{data() + this->to_index(x, y), h * width()} | mo_yanxi::views::slide(w) |
++				mo_yanxi::views::stride(width());
+ 		}
+ 
+ 		[[nodiscard]] decltype(auto) sub_tile_adaptor_view(size_type x, size_type y, size_type w, size_type h) noexcept{
+@@ -361,8 +362,8 @@ export namespace mo_yanxi::dim2{
+ 			assert(y + h <= height());
+ 
+ 			return
+-				std::span<value_type>{data() + this->to_index(x, y), h * width()} | std::views::slide(w) |
+-				std::views::stride(width());
++				std::span<value_type>{data() + this->to_index(x, y), h * width()} | mo_yanxi::views::slide(w) |
++				mo_yanxi::views::stride(width());
+ 		}
+ 
+ 
+@@ -629,9 +630,11 @@ export namespace mo_yanxi::dim2{
+ 
+ 	public:
+ 		using iterator = tile_iterator;
+-		using const_iterator = std::const_iterator<tile_iterator>;
+ 		using reverse_iterator = std::reverse_iterator<tile_iterator>;
++#if defined(__cpp_lib_ranges_as_const)
++		using const_iterator = std::const_iterator<tile_iterator>;
+ 		using const_reverse_iterator = std::reverse_iterator<const_iterator>;
++#endif
+ 
+ 
+ 		[[nodiscard]] constexpr tile() noexcept = default;
+diff --git a/src/legacy/event_manager.ixx b/src/legacy/event_manager.ixx
+index a3e11c3..d40f997 100644
+--- a/src/legacy/event_manager.ixx
++++ b/src/legacy/event_manager.ixx
+@@ -10,6 +10,7 @@ import mo_yanxi.concepts;
+ import mo_yanxi.meta_programming;
+ import mo_yanxi.type_map;
+ import mo_yanxi.heterogeneous;
++import mo_yanxi.functional;
+ 
+ 
+ //TODO delayed event submitter
+@@ -348,22 +349,22 @@ namespace mo_yanxi::events{
+ 	template <template<typename > typename T>
+ 	using wrapped_func =
+ 	T<std::conditional_t<
+-		std::same_as<T<void()>, std::move_only_function<void()>>,
++		std::same_as<T<void()>, mo_yanxi::move_only_function<void()>>,
+ 		void(const void*) const,
+ 		void(const void*)>>;
+ 
+ 	template <typename T, typename Append>
+ 	using select_wrapped_func =
+ 	std::conditional_t<
+-		spec_of<T, std::move_only_function>,
+-		std::move_only_function<void(const void*, Append&) const>,
++		spec_of<T, mo_yanxi::move_only_function>,
++		mo_yanxi::move_only_function<void(const void*, Append&) const>,
+ 		std::function<void(const void*, Append&)>>;
+ 
+ 	template <typename T, typename Append>
+ 	using replace_wrapped_func =
+ 	std::conditional_t<
+-		spec_of<T, std::move_only_function>,
+-		std::move_only_function<Append const>,
++		spec_of<T, mo_yanxi::move_only_function>,
++		mo_yanxi::move_only_function<Append const>,
+ 		std::function<Append>>;
+ 
+ 	template <
+@@ -455,7 +456,7 @@ namespace mo_yanxi::events{
+ 	};
+ 
+ 	template <typename Fn, typename ...Args>
+-	struct unwrap_fn<std::move_only_function<Fn, Args...>>{
++	struct unwrap_fn<mo_yanxi::move_only_function<Fn, Args...>>{
+ 		using funcTpe = Fn;
+ 	};
+ 
+diff --git a/src/legacy/spreadable_event_handler.ixx b/src/legacy/spreadable_event_handler.ixx
+index 62b192a..7901d1a 100644
+--- a/src/legacy/spreadable_event_handler.ixx
++++ b/src/legacy/spreadable_event_handler.ixx
+@@ -6,6 +6,7 @@ export module mo_yanxi.spreadable_event_handler;
+ 
+ export import mo_yanxi.type_map;
+ import std;
++import mo_yanxi.functional;
+ 
+ 
+ namespace mo_yanxi{
+@@ -20,7 +21,7 @@ namespace mo_yanxi{
+ 		using derived_type = Dty;
+ 
+ 		using invoke_result_type = bool;
+-		using func_type = std::move_only_function<invoke_result_type(const void*, derived_type&) const>;
++		using func_type = mo_yanxi::move_only_function<invoke_result_type(const void*, derived_type&) const>;
+ 		using map_type = type_map_of<func_type, EventTs...>;
+ 
+ 	private:
+diff --git a/src/legacy/string_parse.ixx b/src/legacy/string_parse.ixx
+index 666ea53..2033456 100644
+--- a/src/legacy/string_parse.ixx
++++ b/src/legacy/string_parse.ixx
+@@ -5,6 +5,7 @@
+ export module mo_yanxi.algo.string_parse;
+ 
+ import std;
++import mo_yanxi.views;
+ 
+ /*
+ namespace mo_yanxi::algo{
+@@ -136,7 +137,7 @@ namespace mo_yanxi::algo{
+ 
+ 		auto current = [&]{return layers.top();};
+ 
+-		for (auto [idx, value] : target | std::views::enumerate){
++		for (auto [idx, value] : target | mo_yanxi::views::enumerate){
+ 			if(value == subBegin){
+ 				currentOffset = current()->begin_pos;
+ 				auto* cur = &current()->sub_layers.emplace_back(target.substr(idx + 1), static_cast<unwrap_result::offset>(idx + 1));
+diff --git a/src/utility/container/flat_set.ixx b/src/utility/container/flat_set.ixx
+index 32b4678..8ec0b5b 100644
+--- a/src/utility/container/flat_set.ixx
++++ b/src/utility/container/flat_set.ixx
+@@ -67,11 +67,23 @@ public:
+         return this->find_impl(value);
+     }
+ 
++    // std::lower_bound, not std::ranges::lower_bound.
++    //
++    // The ranges version requires indirect_strict_weak_order over a projected
++    // iterator, and clang evaluated that to false here for a comparator that is
++    // a plain std::less<value_type> -- while the identical struct and
++    // comparator satisfy std::strict_weak_order when reduced to a standalone
++    // file on the same compiler. The difference is the module boundary, and
++    // this codebase's rule for clang + C++20 modules is to replace the shape
++    // rather than hunt the mechanism; the cause is NOT established.
++    //
++    // The classic algorithm asks only that the comparator be callable, which is
++    // what this code actually needs, and does the same thing.
+     // --- 增 (Create) ---
+     constexpr bool insert(const value_type& value) {
+         if constexpr (supports_sorted_strategy) {
+             if (this->is_sorted_mode_) {
+-                auto it = std::ranges::lower_bound(this->container_, value, this->compare_);
++                auto it = std::lower_bound(this->container_.begin(), this->container_.end(), value, this->compare_);
+                 if (it != this->container_.end() && this->comparator_(*it, value)) {
+                     return false;
+                 }
+@@ -92,7 +104,7 @@ public:
+     constexpr bool insert(value_type&& value) {
+         if constexpr (supports_sorted_strategy) {
+             if (this->is_sorted_mode_) {
+-                auto it = std::ranges::lower_bound(this->container_, value, this->compare_);
++                auto it = std::lower_bound(this->container_.begin(), this->container_.end(), value, this->compare_);
+                 if (it != this->container_.end() && this->comparator_(*it, value)) {
+                     return false;
+                 }
+@@ -220,7 +232,7 @@ public:
+                 std::ranges::move(it + 1, this->container_.end(), it);
+                 this->container_.pop_back();
+ 
+-                auto insert_it = std::ranges::lower_bound(this->container_, new_val, this->compare_);
++                auto insert_it = std::lower_bound(this->container_.begin(), this->container_.end(), new_val, this->compare_);
+                 auto dist = std::ranges::distance(this->container_.begin(), insert_it);
+                 this->container_.push_back(new_val);
+                 std::ranges::rotate(this->container_.begin() + dist, this->container_.end() - 1, this->container_.end());
+@@ -423,7 +435,7 @@ private:
+     constexpr auto find_impl(const value_type& value) {
+         if constexpr (supports_sorted_strategy) {
+             if (this->is_sorted_mode_) {
+-                auto it = std::ranges::lower_bound(this->container_, value, this->compare_);
++                auto it = std::lower_bound(this->container_.begin(), this->container_.end(), value, this->compare_);
+                 if (it != this->container_.end() && this->comparator_(*it, value)) {
+                     return it;
+                 }
+@@ -438,7 +450,7 @@ private:
+     constexpr auto find_impl(const value_type& value) const {
+         if constexpr (supports_sorted_strategy) {
+             if (this->is_sorted_mode_) {
+-                auto it = std::ranges::lower_bound(this->container_, value, this->compare_);
++                auto it = std::lower_bound(this->container_.begin(), this->container_.end(), value, this->compare_);
+                 if (it != this->container_.end() && this->comparator_(*it, value)) {
+                     return it;
+                 }
+diff --git a/src/utility/container/heterogeneous.ixx b/src/utility/container/heterogeneous.ixx
+index 4212252..1d0404e 100644
+--- a/src/utility/container/heterogeneous.ixx
++++ b/src/utility/container/heterogeneous.ixx
+@@ -182,7 +182,7 @@ private:
+ 		transparent::basic_string_equal_to<char_type>,
+ 		Alloc>;
+ public:
+-	using self_type::unordered_map;
++	using self_type::self_type;
+ 
+ 	// 通用的 at
+ 	template <typename S, typename K>
+diff --git a/src/utility/generic/cond_exist.ixx b/src/utility/generic/cond_exist.ixx
+index cc460f5..523d7ff 100644
+--- a/src/utility/generic/cond_exist.ixx
++++ b/src/utility/generic/cond_exist.ixx
+@@ -104,7 +104,15 @@ struct cond_exist<T, true>{
+ 		requires requires(S&& self){
+ 			static_cast<Ty>(std::forward_like<S>(self.val));
+ 		}
+-	constexpr explicit(!std::convertible_to<S&&, Ty>) operator Ty(this S&& self) noexcept(noexcept(static_cast<Ty>(std::forward_like<S>(self.val)))){
++	// The explicit-specifier asks about the PAYLOAD, not about `S&&`.
++	//
++	// `convertible_to<S&&, Ty>` asks whether the wrapper converts to Ty, and
++	// answering that requires checking this very conversion operator -- clang
++	// says so: "satisfaction of constraint 'is_convertible_v<_From, _To>'
++	// depends on itself". The question it was trying to ask is whether the
++	// stored value converts implicitly, and forward_like over a declval<T&>
++	// asks exactly that with the same value category and no self-reference.
++	constexpr explicit(!std::convertible_to<decltype(std::forward_like<S>(std::declval<T&>())), Ty>) operator Ty(this S&& self) noexcept(noexcept(static_cast<Ty>(std::forward_like<S>(self.val)))){
+ 		return static_cast<Ty>(std::forward_like<S>(self.val));
+ 	}
+ };
+diff --git a/src/utility/generic/function_manipulate.ixx b/src/utility/generic/function_manipulate.ixx
+index a1d7a71..f34fad6 100644
+--- a/src/utility/generic/function_manipulate.ixx
++++ b/src/utility/generic/function_manipulate.ixx
+@@ -139,7 +139,10 @@ consteval bool has_valid_subset_mapping(){
+ 			>{};
+ 		}(std::make_index_sequence<N>{});
+ 
+-		return []<std::size_t... Is>(std::index_sequence<Is...>) constexpr {
++		// `indices` is captured. A lambda with no capture-default cannot capture
++		// implicitly, and passing an index_sequence by value odr-uses it even
++		// though the type carries all the information.
++		return [indices]<std::size_t... Is>(std::index_sequence<Is...>) constexpr {
+ 			return ((count_passable_matches<std::tuple_element_t<Is, SubArgsTuple>, FullTuple>() == 1) && ...)
+ 			    && has_unique_indices(indices);
+ 		}(std::make_index_sequence<N>{});
+diff --git a/src/utility/math/basic/interpolation.ixx b/src/utility/math/basic/interpolation.ixx
+index 9b96115..943c778 100644
+--- a/src/utility/math/basic/interpolation.ixx
++++ b/src/utility/math/basic/interpolation.ixx
+@@ -7,6 +7,7 @@ export module mo_yanxi.math.interpolation;
+ import std;
+ import mo_yanxi.math;
+ import mo_yanxi.concepts;
++import mo_yanxi.functional;
+ 
+ //OPTM static operator()
+ //TODO wrap in a struct and expose friend apply operator |
+@@ -375,7 +376,7 @@ using general_func = std::function<float(float)>;
+ 
+ #ifdef __cpp_lib_move_only_function
+ export
+-using general_func_move_only = std::move_only_function<float(float) const>;
++using general_func_move_only = mo_yanxi::move_only_function<float(float) const>;
+ #endif
+ 
+ export

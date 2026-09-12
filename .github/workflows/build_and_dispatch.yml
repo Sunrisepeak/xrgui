@@ -3,18 +3,34 @@ name: Build XRGUI with Preview MSVC
 env:
   PYTHONUTF8: 1
   VULKAN_VER: 1.4.341.1
+  # The full toolset build, not just 14.52. aka.ms/vs/18/insiders always serves
+  # the newest Insider, so the only thing that can pin the compiler is asking
+  # vcvars for an exact version and failing when it is not there -- drift then
+  # shows up as a clear CI error instead of a silently different compiler.
+  #
+  # 14.51 is not an option: the preinstalled toolset ICEs on this codebase
+  # (C1001 in template.cpp at vector2.ixx:67, "IFC import detected"), which is
+  # presumably why this workflow reached for a preview in the first place.
   MSVC_VER: 14.52
+  MSVC_TOOLSET: 14.52.36629
 
 on:
   push:
     branches: [ "master" ]
   pull_request:
-    branches: [ "master" ]
+
+# Each run installs VS 2026 Insider and the Vulkan SDK before it compiles
+# anything; a superseded run is a very long slot spent on a stale answer.
+concurrency:
+  group: xmake-windows-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
     # === 关键修改1：切换到预装 VS 2026 的 runner ===
-    runs-on: windows-latest   # ← 原来是 windows-latest
+    # Pinned: windows-latest currently maps to windows-2025-vs2026, but only
+    # currently, and this build is sensitive to the toolchain.
+    runs-on: windows-2025
 
     steps:
       - name: Checkout repository
@@ -133,6 +149,22 @@ jobs:
           $vcvarsall = Join-Path $installPath "VC\Auxiliary\Build\vcvarsall.bat"
 
           $envLines = cmd /c "call `"$vcvarsall`" x64 -vcvars_ver=${{ env.MSVC_VER }} >nul && set"
+
+          # What must hold is the 14.52 line -- that is what -vcvars_ver asked
+          # for, and dropping to the image's 14.51 is a real failure (C1001 ICE
+          # at vector2.ixx:67). The exact build number moves whenever
+          # aka.ms/vs/18/insiders does, which is Microsoft's schedule and not a
+          # reason to fail a commit; report it and carry on. It is still the
+          # first thing to suspect when this job reddens on an unrelated change.
+          $got = ($envLines | Select-String '^VCToolsVersion=(.*)$').Matches.Groups[1].Value
+          if (-not $got.StartsWith("${{ env.MSVC_VER }}.")) {
+              Write-Error "vcvars gave VCToolsVersion $got, expected a ${{ env.MSVC_VER }}.* toolset"
+              exit 1
+          }
+          if ($got -ne "${{ env.MSVC_TOOLSET }}") {
+              Write-Host "::warning::MSVC toolset moved: pinned ${{ env.MSVC_TOOLSET }}, installed $got"
+          }
+          Write-Host "MSVC toolset: $got"
 
           foreach ($line in $envLines) {
               if ($line -match "^(.*?)=(.*)$") {

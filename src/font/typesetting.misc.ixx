@@ -4,16 +4,11 @@ module;
 #include <hb-ft.h>
 #include <mo_yanxi/adapted_attributes.hpp>
 
-#ifndef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
 #include <gch/small_vector.hpp>
-#endif
 
 
 export module mo_yanxi.typesetting:misc;
 
-#ifdef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
-import <gch/small_vector.hpp>;
-#endif
 
 import std;
 import mo_yanxi.typesetting.util;

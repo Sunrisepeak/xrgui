@@ -21,6 +21,18 @@ export namespace backend::glfw{
 void initialize(){
 	glfwInit();
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+
+	// Created hidden, shown after the first frame reaches the screen.
+	//
+	// GLFW maps a window as soon as it is created, and on this project that is
+	// roughly 650 ms before anything is drawn into it -- Vulkan device creation,
+	// the asset load and the UI thread all happen in between. What the user sees
+	// for that time is an unpainted window, which under a compositor reads as a
+	// transparent rectangle that suddenly fills in. It is not a stall and not a
+	// dropped frame; there is simply nothing in the window yet.
+	//
+	// window::show() is called once, after the first present. See main_loop.
+	glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
 }
 
 void terminate(){
@@ -93,6 +105,16 @@ public:
 
 	void wait_event() const noexcept{
 		glfwWaitEvents();
+	}
+
+	// Idempotent: the caller invokes it every frame and only the first one
+	// does anything, which keeps the "first present" logic at the call site
+	// instead of threading a flag through the renderer.
+	void show() noexcept{
+		if(handle && !shown_){
+			shown_ = true;
+			glfwShowWindow(handle);
+		}
 	}
 
 	[[nodiscard]] VkSurfaceKHR create_surface(VkInstance instance) const{
@@ -226,6 +248,8 @@ private:
 	};
 
 	exclusive_handle_member<GLFWwindow*> handle{};
+	// Whether show() has already mapped the window; see initialize().
+	bool shown_{};
 	VkExtent2D size{};
 	bool lazy_resized_check{};
 	input_handle::input_sink* input_sink_{};

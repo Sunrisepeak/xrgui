@@ -18,6 +18,7 @@ import mo_yanxi.vk.util;
 import mo_yanxi.type_register;
 import mo_yanxi.raw_byte_buffer;
 import std;
+import mo_yanxi.views;
 
 namespace mo_yanxi::graphic::g2d{
 
@@ -313,10 +314,10 @@ struct data_layout_spec{
 	}
 
 	template <std::ranges::input_range Rng>
-		requires (std::is_trivially_copyable_v<std::remove_cvref_t<std::ranges::range_const_reference_t<Rng>>>)
+		requires (std::is_trivially_copyable_v<std::remove_cvref_t<mo_yanxi::ranges::range_const_reference_t<Rng>>>)
 	void load(unsigned index, Rng&& rng) const noexcept{
 		const auto entry = entries[index];
-		constexpr static unsigned sz = sizeof(std::remove_cvref_t<std::ranges::range_const_reference_t<Rng>>);
+		constexpr static unsigned sz = sizeof(std::remove_cvref_t<mo_yanxi::ranges::range_const_reference_t<Rng>>);
 		assert(entry.unit_size == sz);
 		const auto dst = data.data() + entry.offset;
 		for(unsigned i = {}; const auto& val : rng){
@@ -1040,7 +1041,7 @@ struct frame_resource{
 
 		const auto& vtx_info = host_ctx.get_data_group_non_vertex_info();
 
-		for(const auto& [idx, entry] : vtx_info.entries | std::views::enumerate){
+		for(const auto& [idx, entry] : vtx_info.entries | mo_yanxi::views::enumerate){
 			const auto total = entry.get_count();
 			state_data_layout_cache_.load(1U + (unsigned)idx, entry.data(), total);
 		}
@@ -1070,7 +1071,7 @@ struct frame_resource{
 			mapper.set_uniform_buffer(0,
 			                          buffer_per_draw_call_data.get_address() + state_data_layout_cache_.offset_at(0, (unsigned)current_chunk),
 			                          sizeof(dispatch_config), (std::uint32_t)current_chunk);
-			for(auto [idx, timeline] : cached_volatile_timelines | std::views::enumerate){
+			for(auto [idx, timeline] : cached_volatile_timelines | mo_yanxi::views::enumerate){
 				auto [off, sz] = state_data_layout_cache_[(unsigned)idx + 1U, timeline];
 				mapper.set_uniform_buffer((std::uint32_t)idx + 1U, buffer_per_draw_call_data.get_address() + off, sz, (std::uint32_t)current_chunk);
 			}
@@ -1078,7 +1079,7 @@ struct frame_resource{
 
 		load_timelines(0);
 
-		for(const auto& [chunk_idx, event] : section_events | std::views::enumerate){
+		for(const auto& [chunk_idx, event] : section_events | mo_yanxi::views::enumerate){
 			for(const auto i : event.per_draw_uniform_bumps){
 				++cached_volatile_timelines[i];
 			}
@@ -1162,7 +1163,7 @@ struct frame_resource{
 			}
 
 			VkDeviceSize cur_offset{};
-			for(const auto& [i, entry] : host_ctx.get_data_group_vertex_info().entries | std::views::enumerate){
+			for(const auto& [i, entry] : host_ctx.get_data_group_vertex_info().entries | mo_yanxi::views::enumerate){
 				gfx_mapper.set_element_at(timeline_binding_index + (std::uint32_t)i, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
 				                          buffer_per_timeline_data.get_address() + cur_offset, entry.get_required_byte_size());
 				cur_offset += entry.get_required_byte_size();

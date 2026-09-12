@@ -15,6 +15,7 @@ import mo_yanxi.concurrent.mpsc_double_buffer;
 
 import mo_yanxi.platform.thread;
 import mo_yanxi.log;
+import mo_yanxi.functional;
 
 namespace mo_yanxi::gui::cfg::builtin{
 
@@ -87,10 +88,10 @@ export
 template <typename Payload>
 struct main_loop{
 	struct functions{
-		std::move_only_function<main_loop_init_return_t(main_loop&)> init_fn{};
-		std::move_only_function<void(main_loop&)> main_loop_fn{};
-		std::move_only_function<void(main_loop&)> prepare_exit_fn{};
-		std::move_only_function<void(main_loop&)> exit_fn{};
+		mo_yanxi::move_only_function<main_loop_init_return_t(main_loop&)> init_fn{};
+		mo_yanxi::move_only_function<void(main_loop&)> main_loop_fn{};
+		mo_yanxi::move_only_function<void(main_loop&)> prepare_exit_fn{};
+		mo_yanxi::move_only_function<void(main_loop&)> exit_fn{};
 	};
 
 private:

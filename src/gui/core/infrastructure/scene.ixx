@@ -59,8 +59,17 @@ export struct elem;
 export using i18n_text_root_node = mo_yanxi::i18n::i18n_text_root_node;
 
 namespace util{
-void update_insert(elem& e, update_channel channel);
-void update_erase(const elem& e, update_channel channel);
+// `export` here as well as on the definitions in :element.
+//
+// Without it these declarations have module linkage, the exported definitions
+// are a redeclaration that cannot raise that to external ("cannot export
+// redeclaration ... since the previous declaration has module linkage"), and
+// the friend declarations below then match neither -- so the definitions lose
+// their access to scene's private insert_update/erase_update. Both callers
+// (mo_yanxi.gui.elem.arrow_elem, .split_pane) are in other modules, so exported
+// is the side to agree on.
+export void update_insert(elem& e, update_channel channel);
+export void update_erase(const elem& e, update_channel channel);
 }
 
 /**
@@ -423,7 +432,15 @@ private:
 
 
 
-		constexpr auto operator<=>(const update_entry& o) const noexcept{
+		// std::strong_ordering, not `auto`.
+		//
+		// std::less<update_entry> uses the operator< synthesised from this one,
+		// and a deduced return type is not usable until the function is defined
+		// -- which clang enforces where the use is reached during instantiation
+		// of something else ("function 'operator<=>' with deduced return type
+		// cannot be used before it is defined", from ranges::sort). Two pointers
+		// compare as strong_ordering, so naming it costs nothing.
+		constexpr std::strong_ordering operator<=>(const update_entry& o) const noexcept{
 			return elem <=> o.elem;
 		}
 

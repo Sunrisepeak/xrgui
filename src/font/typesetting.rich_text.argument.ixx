@@ -9,10 +9,16 @@ export module mo_yanxi.typesetting.rich_text:argument;
 import std;
 import mo_yanxi.font.manager;
 import mo_yanxi.utility;
+// math::vec2 is declared in mo_yanxi.math.vector2 and nothing this file already
+// imports re-exports it: graphic.color re-exports math.vector4, and vector4
+// only plain-imports mo_yanxi.math. It compiled on older MSVC because names
+// leaked across the module boundary; 14.52 does not leak them.
+import mo_yanxi.math.vector2;
 import mo_yanxi.static_string;
 import mo_yanxi.typesetting.util;
 import mo_yanxi.heterogeneous;
 import mo_yanxi.graphic.color;
+import mo_yanxi.tuple_manipulate;
 
 export
 constexpr bool operator==(const hb_feature_t& lhs, const hb_feature_t& rhs) noexcept{

@@ -1,6 +1,10 @@
 module;
 
+// See the note in msdf.cpp: compat.msdfgen is built with MSDFGEN_USE_CPP11 off,
+// and its config header is what both sides are meant to agree on.
+#ifndef XRGUI_MSDFGEN_NO_CPP11
 #define MSDFGEN_USE_CPP11
+#endif
 #include <msdfgen/msdfgen.h>
 #include <msdfgen/msdfgen-ext.h>
 

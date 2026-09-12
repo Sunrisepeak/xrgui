@@ -1,5 +1,15 @@
 module;
 
+// <version> for the __cpp_lib_* feature-test macros below.
+//
+// They are PREPROCESSOR macros and `import std;` does not define them --
+// a module exports no macros. Without this header every #if below is
+// false on every compiler, so the fallback is chosen even where the
+// library has the real thing, and the shim silently stops being a shim.
+// That is exactly what happened: MSVC took the local enumerate and its
+// forward+sized requirement rejected a std::stacktrace.
+#include <version>
+
 #ifdef _MSC_VER
 #ifndef _CRT_SECURE_NO_WARNINGS
 #define _CRT_SECURE_NO_WARNINGS
@@ -11,6 +21,7 @@ export module mo_yanxi.log;
 import std;
 import magic_enum;
 import mo_yanxi.platform;
+import mo_yanxi.views;
 
 //Spec: the only reason why this trash log module exists is that spdlog has issue with module...
 
@@ -179,14 +190,24 @@ namespace impl{
 		location.function_name());
 }
 
+// Returns the empty string where <stacktrace> is not available -- libc++ has
+// not shipped it, so __cpp_lib_stacktrace is undefined there.
+//
+// Empty is not a new contract: `trace.empty()` already returns {} below, and
+// write_line already skips a record whose stacktrace is empty. A log line loses
+// its trace on such a platform; nothing else changes, and nothing has to test
+// for a platform to cope with it.
 [[nodiscard]] inline std::string stacktrace_text(){
+#if !defined(__cpp_lib_stacktrace)
+	return {};
+#else
 	const auto trace = std::stacktrace::current(2, 32);
 	if(trace.empty()){
 		return {};
 	}
 
 	std::string result{};
-	for(const auto& [index, entry] : trace | std::views::enumerate){
+	for(const auto& [index, entry] : trace | mo_yanxi::views::enumerate){
 		if(!result.empty()){
 			result += '\n';
 		}
@@ -206,6 +227,7 @@ namespace impl{
 	}
 
 	return result;
+#endif
 }
 
 inline void write_line(std::ostream& output, const record& entry, const bool use_color){

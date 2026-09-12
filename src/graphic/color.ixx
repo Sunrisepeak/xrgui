@@ -7,6 +7,7 @@ export module mo_yanxi.graphic.color;
 import std;
 import mo_yanxi.math;
 export import mo_yanxi.math.vector4;
+import mo_yanxi.views;
 
 namespace mo_yanxi::graphic{
 //TODO clean up
@@ -170,10 +171,10 @@ public:
 	static constexpr auto string_to_rgba(const std::string_view hexStr) noexcept{
 		std::array<std::uint8_t, 4> rgba{};
 		for(const auto& [index, v1] : hexStr
-		    | std::views::slide(2)
-		    | std::views::stride(2)
+		    | mo_yanxi::views::slide(2)
+		    | mo_yanxi::views::stride(2)
 		    | std::views::take(4)
-		    | std::views::enumerate){
+		    | mo_yanxi::views::enumerate){
 			std::from_chars(v1.data(), v1.data() + v1.size(), rgba[index], 16);
 		}
 
@@ -814,7 +815,7 @@ constexpr auto proj(Rng&& rng,
 export
 template <>
 struct ::std::hash<mo_yanxi::graphic::color>{
-	size_t operator()(const mo_yanxi::graphic::color& obj) const noexcept{
+	std::size_t operator()(const mo_yanxi::graphic::color& obj) const noexcept{
 		return obj.hash_value();
 	}
 };

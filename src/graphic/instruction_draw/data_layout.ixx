@@ -59,6 +59,10 @@ struct data_layout_table{
 		}
 	}());
 
+	// Never void -- see the constructor below for why that matters.
+	using allocator_param_type =
+		std::conditional_t<is_allocator_aware, allocator_type, std::allocator<std::byte>>;
+
 private:
 	std::size_t required_capacity_{};
 	Container entries{};
@@ -111,10 +115,22 @@ public:
 		}
 	}
 
+	// The parameter type is allocator_type only when there IS one.
+	//
+	// allocator_type is `void` otherwise, and an IMPLICIT DEDUCTION GUIDE is
+	// formed from every constructor regardless of its trailing requires-clause --
+	// so forming `const void&` for that guide was a hard error outside the
+	// immediate context, and the class could not be used with CTAD at all.
+	//
+	// Substituting a placeholder here rather than making the parameter a template
+	// parameter: that also defers the reference, but it adds a SECOND deduction
+	// guide that competes with the one below ("ambiguous deduction for template
+	// arguments of data_layout_table"). The constructor stays non-template and
+	// the requires-clause still rejects it when there is no allocator.
 	template <typename... Ts>
 		requires (is_tuple_v<Ts> && ...)
 	[[nodiscard]] explicit(false) data_layout_table(
-		const allocator_type& allocator,
+		const allocator_param_type& allocator,
 		std::in_place_type_t<Ts>...
 	) requires(is_allocator_aware) : entries(allocator){
 		this->load<Ts...>();
