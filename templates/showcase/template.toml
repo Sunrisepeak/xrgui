@@ -1,0 +1,3 @@
+[template]
+description  = "The XRGUI showcase: every element, layout, rich text, Markdown, viewport and the post-processing pipeline"
+post_message = "cd into the project and run `mcpp run`. The pages are src/main.cpp's; the widgets they show come with the `examples` feature of xrgui."

@@ -1,0 +1,4 @@
+[template]
+description  = "A minimal XRGUI application: default_application and a handful of elements"
+default      = true
+post_message = "cd into the project and run `mcpp run` -- a window with a label, a button, a slider and a text input."
