@@ -245,6 +245,7 @@ void context::flush(){
 	} else if(result2 != VK_SUCCESS){
 		throw vk_error(result2, "Failed to present swap chain image!");
 	}
+	window_.show();   // created hidden; the first presented frame maps it
 }
 
 output_frame_token context::acquire_output_frame(){
@@ -308,6 +309,7 @@ void context::present_output_frame(const output_frame_token& token){
 	} else if(result != VK_SUCCESS){
 		throw vk_error(result, "Failed to present swap chain image!");
 	}
+	window_.show();   // created hidden; the first presented frame maps it
 }
 
 void context::wait_on_device() const{
