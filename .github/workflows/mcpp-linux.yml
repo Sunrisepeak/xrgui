@@ -37,6 +37,10 @@ jobs:
           submodules: recursive
 
       - name: Install xlings
+        # The installer reads from /dev/tty when its stdin is a pipe, which a
+        # runner has none of; XLINGS_NON_INTERACTIVE is its switch for that.
+        env:
+          XLINGS_NON_INTERACTIVE: "1"
         run: |
           curl -fsSL https://raw.githubusercontent.com/openxlings/xlings/main/tools/other/quick_install.sh | bash
           # The installer edits the shell profile; this step and the later
