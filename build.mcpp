@@ -1,0 +1,294 @@
+// Build-time codegen for xrgui under mcpp -- what is left after mcpp itself
+// took over most of what this file used to do.
+//
+// Three things happen here, in this order:
+//
+//   1. Submodule patches. Applied idempotently before the module scan, because
+//      one hunk exists to satisfy the scanner. mcpp has no mechanism for this;
+//      the patches' real home is the upstream repositories.
+//
+//   2. Icons. One `source` action per file under properties/assets_raw/icons,
+//      running mcpp/svg_outline (built by mcpp as a host tool): the stroked
+//      icon becomes a filled one and lands as a byte list at
+//      MCPP_OUT_DIR/.assets/includes/<rel>.svg.h, to be #include'd INSIDE a
+//      `char[] = { ... }` initializer. This program writes the aggregate,
+//      assets_summary.h, which gui.assets.cpp includes: one
+//      `constexpr inline char[]` per icon, namespaced by directory -- the same
+//      names xmake's media.svg_to_bin rule produces from the potrace-traced
+//      copies under properties/assets_raw/gen.
+//
+//      The set of icons is known here, so the summary is complete at prepare
+//      time; the bytes arrive when the edges run, before any compile.
+//
+//   3. Shaders and distributables, both from mcpp:plugins. mcpp.rules.slang
+//      compiles every .slang the constrained glob in mcpp.toml routed here,
+//      one ninja edge each, and generates xrgui.shaders.h -- the accessors
+//      render_context.cpp and the showcase main.cpp call under
+//      XRGUI_SHADER_SURFACE. mcpp.dist.appimage and mcpp.dist.wix declare the
+//      formats `mcpp pack --format` can ask for and submit nothing otherwise.
+//
+// What is NOT here any more, and where it went:
+//
+//   * the runtime-data copy action  -> [runtime] deploy in mcpp.toml
+//   * the Windows system libraries  -> [target.windows.runtime] libraries
+//   * slang_builder.py + slangc     -> mcpp.rules.slang
+//   * svg_normalize.py + npx        -> mcpp/svg_outline, one action per icon
+//   * PATH probing for tools        -> nothing here asks PATH for anything
+import mcpp;
+import std;
+import mcpp.plugins;
+import mcpp.rules.slang;
+import mcpp.dist.appimage;
+import mcpp.dist.wix;
+
+namespace {
+
+// Diagnostics go to STDOUT, as whole lines that do not start with `mcpp:`,
+// which the directive parser ignores by contract.
+//
+// Not stderr, and that was measured. mcpp reads stdout and stderr through one
+// merged pipe, so an unbuffered stderr line can land INSIDE a buffered
+// directive line: on the Windows runner, forty `mcpp:action=` directives
+// followed by one note to stderr arrived as a JSON payload cut off at
+// `...build-cach` with the note spliced in, and mcpp refused the build with
+// "declared a malformed action". One stream, one order.
+//
+// Do not expect to SEE these during a healthy build: mcpp echoes what it
+// captured only when this program exits non-zero or times out. Anything a
+// user must see on a build that SUCCEEDED goes through mcpp::warning.
+template <typename... Args>
+void note(std::format_string<Args...> fmt, Args&&... args) {
+    std::println("build.mcpp: {}", std::format(fmt, std::forward<Args>(args)...));
+}
+
+// Applies a patch to a checked-out submodule, idempotently.
+//
+// Here rather than as a CI step because that is what makes a local checkout and
+// CI take the same path. A step in one workflow file fixes the tree for one
+// job on one platform; this runs wherever `mcpp build` runs, which is what a
+// Linux or macOS leg needs.
+//
+// build.mcpp runs during PREPARE, before the module scan, which is what lets a
+// patch that exists to satisfy the scanner work at all.
+//
+// `git apply --check` first: applying twice fails, and a developer who already
+// has the patch in their tree must not be told the build is broken. Failure to
+// apply a patch that --check accepted IS reported, because a half-patched tree
+// then fails somewhere with no connection to this.
+void apply_patch(const std::filesystem::path& repo, const std::filesystem::path& patch) {
+    if (!std::filesystem::exists(repo / ".git")) return;   // submodule not checked out
+    if (!std::filesystem::exists(patch)) {
+        note("ERROR: patch file {} does not exist", patch.string());
+        return;
+    }
+
+    const auto check = std::format("git -C \"{}\" apply --check \"{}\" >{} 2>&1",
+                                   repo.string(), patch.string(),
+#ifdef _WIN32
+                                   "NUL"
+#else
+                                   "/dev/null"
+#endif
+    );
+    if (std::system(check.c_str()) != 0) {
+        note("{} already applied (or does not apply), skipping", patch.filename().string());
+        return;
+    }
+    const auto cmd = std::format("git -C \"{}\" apply \"{}\"", repo.string(), patch.string());
+    if (std::system(cmd.c_str()) != 0) {
+        note("ERROR: {} passed --check but failed to apply", patch.filename().string());
+        return;
+    }
+    note("applied {}", patch.filename().string());
+}
+
+std::string sanitize(std::string_view s) {
+    std::string out;
+    out.reserve(s.size());
+    for (const char c : s) {
+        out.push_back((c == '.' || c == '-') ? '_' : c);
+    }
+    return out;
+}
+
+// Directory path -> C++ namespace name: `icons/ui` becomes `icons::ui`,
+// matching xmake.lua's `dir:gsub("[\\/]", "::"):gsub("[%.%-]", "_")`.
+std::string namespace_of(const std::filesystem::path& rel_dir) {
+    std::string out;
+    for (const auto& part : rel_dir) {
+        if (!out.empty()) out += "::";
+        out += sanitize(part.string());
+    }
+    return out;
+}
+
+// Only rewrite when the content actually differs: the summary is an input to
+// every TU that includes it, so touching it on every build would defeat
+// incremental compilation.
+void write_if_changed(const std::filesystem::path& path, std::string_view content) {
+    if (std::ifstream in{path}; in) {
+        const std::string existing{std::istreambuf_iterator<char>{in},
+                                   std::istreambuf_iterator<char>{}};
+        if (existing == content) return;
+    }
+    std::filesystem::create_directories(path.parent_path());
+    std::ofstream{path, std::ios::trunc} << content;
+}
+
+} // namespace
+
+int main() {
+    const std::filesystem::path root = mcpp::manifest_dir();
+    const std::filesystem::path out_dir =
+        std::filesystem::path{mcpp::out_dir()} / ".assets/includes";
+
+    std::filesystem::create_directories(out_dir);
+
+    // ---- submodule patches ------------------------------------------------
+    //
+    // First, because the scan that follows depends on one of them. See the
+    // patch's own header for what each hunk is and why it is not upstream yet.
+    // Two triggers, and the second is not redundant.
+    //
+    // Editing a patch has to re-run this program, or the tree keeps whatever the
+    // previous patch did and the change appears to have no effect.
+    //
+    // So does the submodule sources CHANGING UNDER US -- `git checkout` inside a
+    // submodule reverts the patch, and a cached build.mcpp then does not
+    // re-apply it. The build fails somewhere unrelated (for the hunk that exists
+    // to satisfy the module scanner, at scan time) with no hint that a patch went
+    // missing. CI never sees this because it checks out fresh; a developer does.
+    //
+    // Declared BEFORE the calls so both are registered even on a run that
+    // applies nothing.
+    mcpp::rerun_if_changed_glob("mcpp/patches/*.patch");
+    mcpp::rerun_if_changed_glob("external/mo_yanxi_vulkan_wrapper/src/**/*.ixx");
+    mcpp::rerun_if_changed_glob("external/mo_yanxi_vulkan_wrapper/src/**/*.cpp");
+    mcpp::rerun_if_changed_glob(
+        "external/mo_yanxi_vulkan_wrapper/external/mo_yanxi_utility/src/**/*.ixx");
+
+    apply_patch(root / "external/mo_yanxi_vulkan_wrapper",
+                root / "mcpp/patches/mo_yanxi_vulkan_wrapper.patch");
+    // Nested inside the one above -- a submodule of a submodule, which is why it
+    // needs its own repo path rather than a second hunk in the same file.
+    apply_patch(root / "external/mo_yanxi_vulkan_wrapper/external/mo_yanxi_utility",
+                root / "mcpp/patches/mo_yanxi_utility.patch");
+
+    // ---- icons: one action each through mcpp/svg_outline --------------------
+    //
+    // The SET of files matters, not just their contents: adding an icon has to
+    // regenerate the summary, and a plain rerun-if-changed on a directory would
+    // not catch it. Each file's CONTENT is an action input, so editing one
+    // reruns that edge and nothing else.
+    mcpp::rerun_if_changed_glob("properties/assets_raw/icons/**/*.svg");
+
+    // Paths are taken relative to assets_raw, not to icons/, so the leading
+    // `icons` directory stays in the header path and the namespace:
+    // gui.assets.cpp names `svgs::icons::basic::...`, as it did when the input
+    // tree was assets_raw/gen/icons.
+    const auto assets_raw = root / "properties/assets_raw";
+    const auto icons_in   = assets_raw / "icons";
+    std::vector<std::filesystem::path> svgs;
+    if (std::filesystem::is_directory(icons_in)) {
+        for (const auto& e : std::filesystem::recursive_directory_iterator{icons_in}) {
+            if (e.is_regular_file() && e.path().extension() == ".svg") svgs.push_back(e.path());
+        }
+    }
+    // Directory iteration order is unspecified; the summary must be stable or
+    // its content hash flaps and every consumer rebuilds.
+    std::ranges::sort(svgs);
+
+    const char* svg_outline = mcpp::dep_bin("svg_outline", "svg-outline");
+    if (!svgs.empty() && (svg_outline == nullptr || *svg_outline == '\0')) {
+        note("ERROR: the svg-outline tool was not built; is `tools = [\"svg-outline\"]` on the "
+             "mcpp/svg_outline edge in mcpp.toml?");
+        return 1;
+    }
+
+    std::string summary = "#pragma once\n";
+    for (const auto& svg : svgs) {
+        const auto rel        = std::filesystem::relative(svg, assets_raw);
+        const auto header_rel = std::filesystem::path{rel.string() + ".h"};
+        const auto header_abs = out_dir / header_rel;
+
+        // `source`: a header, ordered before every compile edge of this package.
+        const std::string id = "svg-outline:" + rel.generic_string();
+        mcpp::action a;
+        a.id   = id.c_str();
+        a.role = "source";
+        a.arg(svg_outline).arg(svg.string().c_str()).arg("--embed").arg(header_abs.string().c_str())
+         .input(svg.string().c_str())
+         .output(header_abs.string().c_str())
+         .submit();
+
+        // Always spelled with '/' -- this string lands in a #include.
+        const std::string inc = header_rel.generic_string();
+        const std::string ns  = namespace_of(rel.parent_path());
+        const std::string var = sanitize(rel.filename().string());
+
+        if (!ns.empty()) summary += std::format("namespace {} {{\n", ns);
+        summary += std::format(
+            "#if __has_include(\"{0}\")\n"
+            "constexpr inline char {1}[] = {{\n"
+            "#include \"{0}\"\n"
+            "}};\n"
+            "#else\n"
+            "constexpr inline char {1}[] = {{}};\n"
+            "#endif\n",
+            inc, var);
+        if (!ns.empty()) summary += std::format("}} // namespace {}\n", ns);
+    }
+
+    write_if_changed(out_dir / "assets_summary.h", summary);
+
+    // Private to this package -- consumers of xrgui have no business seeing
+    // the generated tree.
+    mcpp::include_dir(out_dir.string().c_str());
+
+    note("{} icon(s) -> {}", svgs.size(), out_dir.string());
+
+    // ---- shaders: mcpp.rules.slang ------------------------------------------
+    //
+    // The flags are properties/assets_raw/shader/config.toml's common_options,
+    // transcribed. `-O3` is the rule's own field; the rest are slangc's and go
+    // through verbatim. config.toml's one per-shader flag
+    // (`-emit-spirv-via-glsl` on frag_mask_apply) is not needed with slang
+    // 2026.14.1 -- measured: the shader compiles directly -- so there is no
+    // per_file entry. The header surface rather than the module one, because
+    // the consumers are module implementation units and a conditional
+    // #include in their global module fragment is the one shape the scanner
+    // accepts.
+    {
+        mcpp::rules::slang::options o;
+        o.base_dir     = "properties/assets_raw/shader/slangs";
+        o.includes     = { "properties/assets_raw/shader/slangs/lib",
+                           "properties/assets_raw/shader/slangs/ui" };
+        o.optimization = "3";
+        o.extra_args   = { "-g", "-fvk-use-gl-layout", "-fvk-use-entrypoint-name",
+                           "-emit-spirv-directly", "-floating-point-mode", "fast" };
+        o.surface      = mcpp::plugins::surface::kind::c_header;
+        o.module_name  = "xrgui.shaders";
+        if (!mcpp::rules::slang::compile(o)) return 1;
+    }
+
+    // ---- distributables: `mcpp pack --format appimage | msi` ----------------
+    //
+    // Each member declares its format unconditionally and submits its action
+    // only when that format was asked for, so `mcpp build` has the graph it
+    // always had. A member for another OS declares and never applies.
+    {
+        mcpp::dist::appimage::options a;
+        a.target     = "xrgui_hello";
+        a.app_name   = "xrgui";
+        a.icon       = "properties/assets/images/xrgui-512.png";
+        a.categories = { "Development" };
+        a.terminal   = false;
+        if (!mcpp::dist::appimage::generate(a)) return 1;
+
+        mcpp::dist::wix::options w;
+        w.target       = "xrgui_hello";
+        w.product_name = "xrgui";
+        if (!mcpp::dist::wix::generate(w)) return 1;
+    }
+    return 0;
+}
