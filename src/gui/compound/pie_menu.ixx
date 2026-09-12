@@ -16,6 +16,7 @@ import mo_yanxi.graphic.g2d;
 import mo_yanxi.graphic.g2d.fringe;
 import mo_yanxi.math;
 import mo_yanxi.react_flow.common;
+import mo_yanxi.functional;
 
 namespace mo_yanxi::gui::cpd{
 
@@ -40,13 +41,13 @@ export
 export
 struct pie_menu_item{
 	elem_ptr element{};
-	std::move_only_function<void()> action{};
+	mo_yanxi::move_only_function<void()> action{};
 	bool disabled{};
 };
 
 export
 struct pie_menu_item_config{
-	std::move_only_function<void()> action{};
+	mo_yanxi::move_only_function<void()> action{};
 	bool disabled{};
 };
 
@@ -165,7 +166,7 @@ struct pie_menu_config{
 	graphic::color ring_color{graphic::colors::black.copy_set_a(.62f)};
 	graphic::color selected_ring_color{graphic::colors::aqua.copy_set_a(.90f)};
 
-	std::move_only_function<void()> on_cancel{};
+	mo_yanxi::move_only_function<void()> on_cancel{};
 
 	[[nodiscard]] math::vec2 item_direction(const std::size_t index, const std::size_t item_count) const noexcept{
 		if(item_count <= blender_pie_slot_count && index < blender_pie_slot_count){
@@ -202,7 +203,7 @@ struct pie_menu_item_layout{
 };
 
 struct pie_menu_item_state{
-	std::move_only_function<void()> action{};
+	mo_yanxi::move_only_function<void()> action{};
 	bool disabled{};
 	pie_menu_item_layout layout{};
 	math::vec2 observed_scaling{1.f, 1.f};

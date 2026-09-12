@@ -2,6 +2,13 @@
 
 //
 
+module;
+
+// <new> for the aligned operator new std::vector<input_event_variant> needs:
+// without it clang sees libc++'s declaration (via `import std`) and the
+// implicit one as two candidates.
+#include <new>
+
 export module mo_yanxi.input_handle.input_event_queue;
 
 import std;

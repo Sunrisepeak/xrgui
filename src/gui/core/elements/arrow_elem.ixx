@@ -61,7 +61,7 @@ struct arrow_elem : elem{
 	}
 };
 
-using arrow_animator = util::animator<float, 1 / 20.f, 0, 0>;
+using arrow_animator = util::animator<float, 1.f / 20.f, 0.f, 0.f>;
 
 export
 struct arrow_rotor : arrow_elem<arrow_rotor>{

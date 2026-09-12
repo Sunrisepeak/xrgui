@@ -1,5 +1,9 @@
 module;
 
+// gch's iterator operator== is a namespace-scope template; the interface's
+// global module fragment does not make it visible here.
+#include <gch/small_vector.hpp>
+
 #include <cassert>
 
 module mo_yanxi.gui.infrastructure;

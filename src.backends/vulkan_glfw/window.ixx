@@ -21,6 +21,11 @@ export namespace backend::glfw{
 void initialize(){
 	glfwInit();
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+
+	// Created hidden; default_application shows it after the first present.
+	// Vulkan and asset initialisation take ~650 ms, during which a mapped
+	// window is an unpainted rectangle.
+	glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
 }
 
 void terminate(){
@@ -93,6 +98,14 @@ public:
 
 	void wait_event() const noexcept{
 		glfwWaitEvents();
+	}
+
+	// Idempotent: called every frame, maps the window once.
+	void show() noexcept{
+		if(handle && !shown_){
+			shown_ = true;
+			glfwShowWindow(handle);
+		}
 	}
 
 	[[nodiscard]] VkSurfaceKHR create_surface(VkInstance instance) const{
@@ -226,6 +239,7 @@ private:
 	};
 
 	exclusive_handle_member<GLFWwindow*> handle{};
+	bool shown_{};
 	VkExtent2D size{};
 	bool lazy_resized_check{};
 	input_handle::input_sink* input_sink_{};

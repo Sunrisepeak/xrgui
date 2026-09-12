@@ -14,7 +14,11 @@ module;
 #include FT_OUTLINE_H
 #endif
 
+// compat.msdfgen (mcpp) is built without MSDFGEN_USE_CPP11 and ships no
+// Contour::addEdge(EdgeHolder&&); xrepo's msdfgen has it, so xmake keeps the define.
+#ifndef XRGUI_MSDFGEN_NO_CPP11
 #define MSDFGEN_USE_CPP11
+#endif
 #include <msdfgen/msdfgen.h>
 #include <msdfgen/msdfgen-ext.h>
 
@@ -28,6 +32,7 @@ module mo_yanxi.graphic.msdf;
 
 import mo_yanxi.font;
 import std;
+import mo_yanxi.views;
 
 #if MO_YANXI_USE_COMPLEX_SVG
 namespace{
@@ -212,7 +217,7 @@ clipper2::Paths64 convert_and_fix_outline(FT_Outline& outline){
 
 void convert_paths_to_shape(const clipper2::Paths64& paths, msdfgen::Shape& shape) {
 	for (const auto& path : paths) {
-		const size_t size = path.size();
+		const std::size_t size = path.size();
 		// 忽略无法构成面积的路径
 		if (size < 3) continue;
 
@@ -304,12 +309,12 @@ msdfgen::Shape process_nsvg_with_freetype(
 				for(const NSVGpath* path = nsvg_shape->paths; path != nullptr; path = path->next){
 					for(const auto& [p1, p2, p3, p4] :
 					    std::span{path->pts, path->npts * 2uz}
-					    | std::views::adjacent<2> | std::views::stride(2) | std::views::transform([](auto&& p){
+					    | std::views::adjacent<2> | mo_yanxi::views::stride(2) | std::views::transform([](auto&& p){
 						    auto [x, y] = p;
 						    return mo_yanxi::math::vec2{x, y};
 					    })
 					    | std::views::adjacent<4>
-					    | std::views::stride(3)){
+					    | mo_yanxi::views::stride(3)){
 						msdfgen::Point2 p1_(p1.x, p1.y);
 						msdfgen::Point2 p2_(p2.x, p2.y);
 						msdfgen::Point2 p3_(p3.x, p3.y);
@@ -342,13 +347,13 @@ msdfgen::Shape process_nsvg_with_freetype(
 					    std::span{path->pts, path->npts * 2uz}
 					    | std::views::drop(2)
 					    | std::views::adjacent<2>
-					    | std::views::stride(2)
+					    | mo_yanxi::views::stride(2)
 					    | std::views::transform([](auto&& p){
 						    auto [x, y] = p;
 						    return mo_yanxi::math::vec2{x, y};
 					    })
 					    | std::views::adjacent<3>
-					    | std::views::stride(3)){
+					    | mo_yanxi::views::stride(3)){
 						if(mo_yanxi::math::zero((p2 - p1).cross(p3 - p1))){
 							FT_Vector p3_{float_to_ft(p3.x), float_to_ft(p3.y)};
 							FT_Stroker_LineTo(stroker, &p3_);
@@ -420,12 +425,12 @@ msdfgen::Shape process_nsvg_basic(NSVGimage* svgimage, msdfgen::Shape& final_sha
 			for(const NSVGpath* path = nsvg_shape->paths; path != nullptr; path = path->next){
 				for(const auto& [p1, p2, p3, p4] :
 				    std::span{path->pts, path->npts * 2uz}
-				    | std::views::adjacent<2> | std::views::stride(2) | std::views::transform([](auto&& p){
+				    | std::views::adjacent<2> | mo_yanxi::views::stride(2) | std::views::transform([](auto&& p){
 					    auto [x, y] = p;
 					    return mo_yanxi::math::vec2{x, y};
 				    })
 				    | std::views::adjacent<4>
-				    | std::views::stride(3)){
+				    | mo_yanxi::views::stride(3)){
 					msdfgen::Point2 p1_(p1.x, p1.y);
 					msdfgen::Point2 p2_(p2.x, p2.y);
 					msdfgen::Point2 p3_(p3.x, p3.y);
@@ -885,7 +890,7 @@ svg_info create_capsule_smooth(double width, double height, double exponent){
 	}
 	points.push_back(points[0]);
 
-	for(size_t i = 0; i < points.size() - 1; ++i){
+	for(std::size_t i = 0; i < points.size() - 1; ++i){
 		contour.addEdge(new LinearSegment(points[i], points[i + 1]));
 	}
 

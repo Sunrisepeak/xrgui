@@ -1,5 +1,9 @@
 module;
 
+// <version> for the __cpp_lib_* feature-test macros below: `import std;`
+// exports no macros, and without them every #if here chose the fallback.
+#include <version>
+
 #ifdef _MSC_VER
 #ifndef _CRT_SECURE_NO_WARNINGS
 #define _CRT_SECURE_NO_WARNINGS
@@ -11,6 +15,7 @@ export module mo_yanxi.log;
 import std;
 import magic_enum;
 import mo_yanxi.platform;
+import mo_yanxi.views;
 
 //Spec: the only reason why this trash log module exists is that spdlog has issue with module...
 
@@ -179,14 +184,19 @@ namespace impl{
 		location.function_name());
 }
 
+// Empty where <stacktrace> is not available (libc++); write_line already
+// skips a record whose trace is empty.
 [[nodiscard]] inline std::string stacktrace_text(){
+#if !defined(__cpp_lib_stacktrace)
+	return {};
+#else
 	const auto trace = std::stacktrace::current(2, 32);
 	if(trace.empty()){
 		return {};
 	}
 
 	std::string result{};
-	for(const auto& [index, entry] : trace | std::views::enumerate){
+	for(const auto& [index, entry] : trace | mo_yanxi::views::enumerate){
 		if(!result.empty()){
 			result += '\n';
 		}
@@ -206,6 +216,7 @@ namespace impl{
 	}
 
 	return result;
+#endif
 }
 
 inline void write_line(std::ostream& output, const record& entry, const bool use_color){

@@ -13,6 +13,7 @@ export import mo_yanxi.backend.vulkan.context;
 export import mo_yanxi.backend.vulkan.renderer;
 export import mo_yanxi.graphic.image_atlas;
 export import mo_yanxi.font.manager;
+import mo_yanxi.functional;
 
 namespace mo_yanxi::gui::cfg{
 
@@ -30,7 +31,7 @@ struct render_context_config{
 	 * image registry sampler descriptor indices after registration.
 	 */
 	graphic::image_page_sampler_indices image_page_sampler_indices{};
-	std::move_only_function<void(backend::vulkan::renderer_create_info&)> configure_renderer_create_info{};
+	mo_yanxi::move_only_function<void(backend::vulkan::renderer_create_info&)> configure_renderer_create_info{};
 	bool initialize_gui_globals{true};
 	bool load_default_assets{true};
 };

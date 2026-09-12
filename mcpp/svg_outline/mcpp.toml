@@ -1,0 +1,39 @@
+# svg-outline: the build-time tool that turns a stroked SVG icon into a
+# filled one, so the MSDF loader (which reads fills only) can take it.
+#
+# It replaced `svg_normalize.py` + `npx oslllo-svg-fixer`: that path RASTERISED
+# the icon and traced the bitmap back with potrace -- a browser engine, node and
+# python to get an approximation of geometry this file computes exactly.
+#
+# Built by mcpp for the build machine (`tools = ["svg-outline"]` on the edge in
+# ../../mcpp.toml), cached globally, and run once per icon as a `source` action
+# declared by ../../build.mcpp. See main.cpp for the algorithm.
+[package]
+name        = "svg_outline"
+version     = "0.1.0"
+description = "Stroked SVG in, filled SVG (or its bytes as a C initializer) out"
+
+[language]
+standard   = "c++23"
+modules    = true
+import_std = true
+
+# The same compilers the root pins. A host-tool sub-build resolves the tool
+# package's OWN [toolchain] -- nothing is inherited from the consumer -- so
+# without these it took the machine's default, which on the Windows runner
+# was an older clang against the MSVC 14.52 STL ("expected Clang 22 or newer",
+# and the std module failed to precompile). Sharing the root's choice also
+# keeps one std module and one cache between the two. The managed CI leg
+# rewrites `windows` here exactly as it does in the root manifest.
+[toolchain]
+linux   = "llvm@22.1.8"
+windows = "msvc@system"
+
+[dependencies]
+# Already a dependency of xrgui: its runtime loads the same SVGs with it, so
+# the two agree on what an element becomes.
+compat.nanosvg = "2026.07.09"
+
+[targets.svg-outline]
+kind = "bin"
+main = "main.cpp"

@@ -1,0 +1,230 @@
+# Windows / MSVC CI for the mcpp build.
+#
+# build_and_dispatch.yml already builds this tree with xmake on the same runner
+# image and the same preview MSVC; this job varies the build system and as
+# little else as possible. Only mcpp is installed by this file: the compiler
+# comes from Visual Studio (system leg) or from mcpp itself (managed leg), and
+# everything else -- Vulkan, slang, the icon tool, every library -- is declared
+# in mcpp.toml and provided by mcpp on the first build.
+name: mcpp (Windows / MSVC)
+
+env:
+  # Same two values as build_and_dispatch.yml, and they have to stay the same:
+  # the point of this job is that only the build system differs. 14.52 is not
+  # optional -- the image's 14.51 ICEs on this codebase (C1001 at
+  # vector2.ixx:67, "IFC import detected").
+  MSVC_VER: 14.52
+  MSVC_TOOLSET: 14.52.36629
+  VS_INSIDER_DIR: C:\VS2026Insider
+  # Pinned, because mcpp is the thing under test. 2026.9.12.2 is a floor:
+  # `[runtime] deploy` and `windows_subsystem` in mcpp.toml need it.
+  MCPP_VER: 2026.9.12.2
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+  workflow_dispatch:
+
+# A new push supersedes whatever was already running for the same PR or
+# branch; each run installs Visual Studio before it compiles anything.
+concurrency:
+  group: mcpp-windows-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-msvc:
+    # Two legs, one toolset version (14.52.36629), so a difference between
+    # them is about where the compiler came from and nothing else:
+    #
+    #   system   the machine's Visual Studio, found through VSINSTALLDIR. The
+    #            runner also has the image's release-channel 14.51, so this is
+    #            where "a declared VSINSTALLDIR outranks mcpp's vswhere probe"
+    #            (mcpp#434) is exercised against a real alternative.
+    #   managed  no Visual Studio at all: mcpp installs the toolset from its
+    #            index, content-addressed, so the pin is the same bytes every
+    #            run -- which the Insider download on the system leg cannot
+    #            promise (aka.ms/vs/18/insiders always serves the newest).
+    name: windows-msvc (${{ matrix.origin }})
+    strategy:
+      fail-fast: false
+      matrix:
+        origin: [ system, managed ]
+
+    # Pinned, and the same label build_and_dispatch.yml uses: the image decides
+    # which Windows SDK the preview toolset sits on top of.
+    runs-on: windows-2025
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install xlings
+        shell: pwsh
+        run: |
+          irm https://raw.githubusercontent.com/openxlings/xlings/main/tools/other/quick_install.ps1 | iex
+          # The installer edits the user profile; this step and the later ones
+          # need the directory on PATH now.
+          $home_x = Join-Path $env:USERPROFILE ".xlings"
+          $found = Get-ChildItem -Path $home_x -Filter "xlings.exe" -Recurse -ErrorAction SilentlyContinue
+          if (-not $found) { Write-Error "xlings.exe not found under $home_x"; exit 1 }
+          foreach ($d in ($found.Directory.FullName | Select-Object -Unique)) {
+              $env:PATH = "$d;$env:PATH"
+              echo $d | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          }
+          xlings --version
+
+      - name: Install mcpp via xlings
+        shell: pwsh
+        run: |
+          xlings install mcpp@${{ env.MCPP_VER }}
+          # `install` leaves the requested version inactive when another one
+          # already holds the name; make it the active one, then check.
+          xlings use mcpp ${{ env.MCPP_VER }}
+          $c = Get-Command mcpp -ErrorAction SilentlyContinue
+          if (-not $c) { Write-Error "xlings installed mcpp but it is not on PATH"; exit 1 }
+          $v = (mcpp --version 2>&1 | Out-String).Trim()
+          Write-Host $v
+          if ($v -notmatch [regex]::Escape("${{ env.MCPP_VER }}")) {
+              Write-Error "expected mcpp ${{ env.MCPP_VER }}, got: $v"; exit 1
+          }
+
+      # ── system leg: the preview toolset, and mcpp pointed at it ─────────
+      #
+      # vswhere.exe and the preinstalled 14.51 are deliberately left in place:
+      # mcpp has to choose the exported VSINSTALLDIR over an instance its own
+      # probe would rank first, and the assertion below is what proves it did.
+      - name: Download and Install VS 2026 Insider Build Tools (Preview MSVC ${{ env.MSVC_VER }})
+        if: matrix.origin == 'system'
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://aka.ms/vs/18/insiders/vs_BuildTools.exe" -OutFile "vs_buildtools_insider.exe"
+          $installArgs = @(
+            "--quiet", "--wait", "--norestart", "--nocache",
+            "--installPath", "${{ env.VS_INSIDER_DIR }}",
+            "--add", "Microsoft.VisualStudio.Workload.VCTools",
+            "--add", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+            "--add", "Microsoft.VisualStudio.Component.VC.Preview.Tools.x86.x64",
+            "--includeRecommended"
+          )
+          $p = Start-Process -FilePath ".\vs_buildtools_insider.exe" -ArgumentList $installArgs -Wait -PassThru -NoNewWindow
+          if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) {
+              Write-Error "Installation failed with exit code: $($p.ExitCode)"; exit 1
+          }
+
+      - name: Point mcpp at the preview toolset
+        if: matrix.origin == 'system'
+        shell: pwsh
+        run: |
+          $vcvarsall = Join-Path "${{ env.VS_INSIDER_DIR }}" "VC\Auxiliary\Build\vcvarsall.bat"
+          if (-not (Test-Path $vcvarsall)) { Write-Error "no vcvarsall at $vcvarsall"; exit 1 }
+          $envLines = cmd /c "call `"$vcvarsall`" x64 -vcvars_ver=${{ env.MSVC_VER }} >nul && set"
+          # The 14.52 line is what must hold; the exact build number moves on
+          # Microsoft's schedule, so that is a warning and not a failure.
+          $got = ($envLines | Select-String '^VCToolsVersion=(.*)$').Matches.Groups[1].Value
+          if (-not $got.StartsWith("${{ env.MSVC_VER }}.")) {
+              Write-Error "vcvars gave VCToolsVersion $got, expected a ${{ env.MSVC_VER }}.* toolset"; exit 1
+          }
+          if ($got -ne "${{ env.MSVC_TOOLSET }}") {
+              Write-Host "::warning::MSVC toolset moved: pinned ${{ env.MSVC_TOOLSET }}, installed $got"
+          }
+          foreach ($line in $envLines) {
+              if ($line -match "^(.*?)=(.*)$" -and $matches[1] -notin "PROMPT", "ComSpec") {
+                  echo "$($matches[1])=$($matches[2])" >> $env:GITHUB_ENV
+              }
+          }
+          echo "MCPP_MSVC_TOOLSET=$got" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "MSVC toolset: $got"
+
+      # ── managed leg: the manifest names the toolset, mcpp installs it ───
+      #
+      # The manifest is rewritten rather than passed `--toolchain`: `mcpp why
+      # toolchain` (the assertion below) reads the manifest, and the build and
+      # the assertion must be talking about the same thing. Two manifests name
+      # a toolchain: the root, and the icon tool under mcpp/, which mcpp builds
+      # as a host sub-build with its own [toolchain].
+      - name: Pin the manifest to the managed toolset
+        if: matrix.origin == 'managed'
+        shell: pwsh
+        run: |
+          foreach ($m in @("mcpp.toml", "mcpp/svg_outline/mcpp.toml")) {
+              $before = Get-Content $m -Raw
+              $after = $before -replace 'windows\s*=\s*"msvc@system"', 'windows = "msvc@${{ env.MSVC_TOOLSET }}"'
+              # A manifest that stopped saying msvc@system would turn this leg
+              # into a copy of the system leg that passes while proving nothing.
+              if ($after -eq $before) {
+                  Write-Error "$m has no `windows = ""msvc@system""` line to replace"; exit 1
+              }
+              Set-Content $m $after -NoNewline
+              Select-String -Path $m -Pattern '^windows\s*=' | ForEach-Object { Write-Host "$m : $($_.Line)" }
+          }
+          echo "MCPP_MSVC_TOOLSET=${{ env.MSVC_TOOLSET }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      # No restore-keys: ~/.mcpp holds compiled artifacts whose validity
+      # depends on the manifest and the toolset, so a changed manifest or a
+      # moved toolset has to mean a cold cache.
+      - name: mcpp — cache registry and build artifacts
+        uses: actions/cache@v4
+        with:
+          path: ~/.mcpp
+          key: mcpp-win-${{ env.MCPP_VER }}-${{ env.MCPP_MSVC_TOOLSET }}-${{ hashFiles('mcpp.toml', 'mcpp/**/mcpp.toml', 'mcpp/**/*.ixx', 'mcpp/patches/*.patch', 'build.mcpp') }}
+
+      # `mcpp why toolchain` resolves [toolchain] the way the build will, and
+      # on the managed leg it is also where a cold cache installs the toolset
+      # (no explicit install first: declaring it has to be enough). Landing on
+      # 14.51 would not produce a worse build, it would produce C1001 forty
+      # minutes later; better to say so here.
+      - name: Assert mcpp resolved the intended toolset
+        shell: pwsh
+        run: |
+          $out = (mcpp why toolchain 2>&1 | Out-String)
+          Write-Host $out
+          if ($out -notmatch [regex]::Escape("$env:MCPP_MSVC_TOOLSET")) {
+              Write-Error "mcpp did not resolve msvc $env:MCPP_MSVC_TOOLSET (${{ matrix.origin }} leg)"; exit 1
+          }
+
+      - name: mcpp — build the library and xrgui_hello
+        run: mcpp build
+
+      - name: mcpp — build xrgui_example
+        run: mcpp build --features examples
+
+      - name: mcpp — build and run xrgui_tests
+        shell: pwsh
+        run: |
+          mcpp build --features tests
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $exe = Get-ChildItem -Path target -Filter xrgui_tests.exe -Recurse | Select-Object -First 1
+          if (-not $exe) { Write-Error "xrgui_tests.exe was not produced"; exit 1 }
+          & $exe.FullName
+          if ($LASTEXITCODE -ne 0) { Write-Error "tests failed"; exit $LASTEXITCODE }
+
+      # `--profile dev` reuses the build above; the artifact is a smoke test,
+      # not a release. WiX is a .NET tool the `msi` member finds on PATH; 6.0.2
+      # because v7 wants a licence accepted interactively (WIX7015).
+      - name: mcpp — pack (zip and MSI)
+        shell: pwsh
+        run: |
+          # Named: two bin targets are declared and only one is in this
+          # feature set, so a bare `mcpp pack` cannot settle on it.
+          mcpp pack --profile dev xrgui_hello
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          dotnet tool install --global wix --version 6.0.2
+          mcpp pack --profile dev --format msi xrgui_hello
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          Get-ChildItem target/dist -Recurse | Select-Object FullName, Length
+          if (-not (Get-ChildItem target -Filter *.msi -Recurse)) { Write-Error "no MSI was produced"; exit 1 }
+
+      - name: Upload mcpp artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          # Per leg: the two legs' binaries are not interchangeable.
+          name: xrgui-mcpp-windows-${{ matrix.origin }}
+          path: |
+            target/dist/
+            target/**/*.msi
+          if-no-files-found: ignore

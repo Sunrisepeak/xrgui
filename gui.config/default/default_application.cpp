@@ -40,6 +40,7 @@ import mo_yanxi.typesetting.rich_text;
 
 import mo_yanxi.platform;
 import mo_yanxi.log;
+import mo_yanxi.vk.util;
 
 namespace mo_yanxi::gui::cfg{
 namespace{
@@ -265,6 +266,11 @@ struct default_application::state{
 				loop->get_renderer().get_valid_cmd_buf(),
 				loop->get_renderer().get_fence());
 			ctx.flush();
+
+			// The window is created hidden (backend::glfw::initialize); the first
+			// present is what makes it worth showing.
+			ctx.window().show();
+
 			loop->reset_term();
 		}
 

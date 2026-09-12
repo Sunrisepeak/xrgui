@@ -59,6 +59,10 @@ struct data_layout_table{
 		}
 	}());
 
+	// Never void -- see the constructor below for why that matters.
+	using allocator_param_type =
+		std::conditional_t<is_allocator_aware, allocator_type, std::allocator<std::byte>>;
+
 private:
 	std::size_t required_capacity_{};
 	Container entries{};
@@ -111,10 +115,13 @@ public:
 		}
 	}
 
+	// allocator_param_type, not allocator_type: the latter is `void` without an
+	// allocator, and the implicit deduction guide formed from this constructor
+	// then spells `const void&`, a hard error that disabled CTAD entirely.
 	template <typename... Ts>
 		requires (is_tuple_v<Ts> && ...)
 	[[nodiscard]] explicit(false) data_layout_table(
-		const allocator_type& allocator,
+		const allocator_param_type& allocator,
 		std::in_place_type_t<Ts>...
 	) requires(is_allocator_aware) : entries(allocator){
 		this->load<Ts...>();
