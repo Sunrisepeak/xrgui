@@ -140,6 +140,44 @@ const VkApplicationInfo& prepare_config_for_context(render_context_config& confi
 
 }
 
+vk::shader_module load_builtin_shader(
+	backend::vulkan::context& ctx,
+	const std::string_view name,
+	const std::filesystem::path& shader_spv_path){
+#ifdef XRGUI_SHADER_SURFACE
+	// The arrays mcpp.rules.slang compiled in, under the names the .spv files
+	// carry; `shader_spv_path` is what the other build reads them from.
+	(void)shader_spv_path;
+	namespace sh = xrgui::shaders;
+	static constexpr std::pair<std::string_view, sh::payload (*)()> table[]{
+		{"ui.draw.vert",                         sh::ui::draw::vert},
+		{"ui.draw.frag_basic",                   sh::ui::draw::frag_basic},
+		{"ui.draw.frag_outlined",                sh::ui::draw::frag_outlined},
+		{"ui.draw.coord_draw",                   sh::ui::draw::coord_draw},
+		{"ui.draw.frag_mask",                    sh::ui::draw::frag_mask},
+		{"ui.draw.frag_mask_apply",              sh::ui::draw::frag_mask_apply},
+		{"ui.blit.basic",                        sh::ui::blit::lane_merge},   // config.toml's alias
+		{"ui.blit.alpha_blend",                  sh::ui::blit::alpha_blend},
+		{"ui.blit.inverse",                      sh::ui::blit::inverse},
+		{"ui.instruction_resolve_comp",          sh::ui::instruction_resolve_comp},
+		{"ui.merge",                             sh::ui::merge},
+		{"post_process.highlight_extract",       sh::post_process::highlight_extract},
+		{"post_process.fullscreen_present.vert", sh::post_process::fullscreen_present_vert},
+		{"post_process.fullscreen_present.frag", sh::post_process::fullscreen_present_frag},
+		{"post_process.bloom",                   sh::post_process::bloom},
+	};
+	for(const auto& [known, get] : table){
+		if(known != name) continue;
+		const auto p = get();
+		return vk::shader_module{ctx.get_device(),
+			std::span<const std::uint32_t>{p.code, p.size_bytes / sizeof(std::uint32_t)}};
+	}
+	throw std::invalid_argument{std::format("xrgui has no shader named '{}'", name)};
+#else
+	return vk::shader_module{ctx.get_device(), shader_spv_path / std::format("{}.spv", name)};
+#endif
+}
+
 [[nodiscard]] renderer_create_info_bundle make_default_renderer_create_info(
 	backend::vulkan::context& ctx,
 	graphic::image_view_registry& image_view_registry,
@@ -148,42 +186,21 @@ const VkApplicationInfo& prepare_config_for_context(render_context_config& confi
 	auto& shader_modules = bundle.shader_modules;
 	shader_modules.reserve(10);
 
-#ifdef XRGUI_SHADER_SURFACE
-	// The same ten shaders, from the arrays mcpp.rules.slang compiled in.
-	// `shader_spv_path` is unused on this path and deliberately kept in the
-	// signature so the two builds share one interface.
-	(void)shader_spv_path;
-	namespace sh = xrgui::shaders;
-	auto load = [&](const sh::payload& p) -> vk::shader_module& {
-		return shader_modules.emplace_back(ctx.get_device(),
-			std::span<const std::uint32_t>{p.code, p.size_bytes / sizeof(std::uint32_t)});
+	auto load = [&](const std::string_view name) -> vk::shader_module& {
+		return shader_modules.emplace_back(load_builtin_shader(ctx, name, shader_spv_path));
 	};
-	auto& draw_shader_vert = load(sh::ui::draw::vert());
-	auto& draw_shader_frag_basic = load(sh::ui::draw::frag_basic());
-	auto& draw_shader_frag_outlined = load(sh::ui::draw::frag_outlined());
-	auto& draw_shader_coord = load(sh::ui::draw::coord_draw());
-	auto& draw_shader_mask = load(sh::ui::draw::frag_mask());
-	auto& draw_shader_mask_apply = load(sh::ui::draw::frag_mask_apply());
+	auto& draw_shader_vert = load("ui.draw.vert");
+	auto& draw_shader_frag_basic = load("ui.draw.frag_basic");
+	auto& draw_shader_frag_outlined = load("ui.draw.frag_outlined");
+	auto& draw_shader_coord = load("ui.draw.coord_draw");
+	auto& draw_shader_mask = load("ui.draw.frag_mask");
+	auto& draw_shader_mask_apply = load("ui.draw.frag_mask_apply");
 
-	auto& blit_shader_merge = load(sh::ui::blit::lane_merge());   // config.toml aliases this "ui/blit/basic"
-	auto& blit_shader_blend = load(sh::ui::blit::alpha_blend());
-	auto& blit_shader_inverse = load(sh::ui::blit::inverse());
+	auto& blit_shader_merge = load("ui.blit.basic");
+	auto& blit_shader_blend = load("ui.blit.alpha_blend");
+	auto& blit_shader_inverse = load("ui.blit.inverse");
 
-	auto& shader_instr_resolve = load(sh::ui::instruction_resolve_comp());
-#else
-	auto& draw_shader_vert = shader_modules.emplace_back(ctx.get_device(), shader_spv_path / "ui.draw.vert.spv");
-	auto& draw_shader_frag_basic = shader_modules.emplace_back(ctx.get_device(), shader_spv_path / "ui.draw.frag_basic.spv");
-	auto& draw_shader_frag_outlined = shader_modules.emplace_back(ctx.get_device(), shader_spv_path / "ui.draw.frag_outlined.spv");
-	auto& draw_shader_coord = shader_modules.emplace_back(ctx.get_device(), shader_spv_path / "ui.draw.coord_draw.spv");
-	auto& draw_shader_mask = shader_modules.emplace_back(ctx.get_device(), shader_spv_path / "ui.draw.frag_mask.spv");
-	auto& draw_shader_mask_apply = shader_modules.emplace_back(ctx.get_device(), shader_spv_path / "ui.draw.frag_mask_apply.spv");
-
-	auto& blit_shader_merge = shader_modules.emplace_back(ctx.get_device(), shader_spv_path / "ui.blit.basic.spv");
-	auto& blit_shader_blend = shader_modules.emplace_back(ctx.get_device(), shader_spv_path / "ui.blit.alpha_blend.spv");
-	auto& blit_shader_inverse = shader_modules.emplace_back(ctx.get_device(), shader_spv_path / "ui.blit.inverse.spv");
-
-	auto& shader_instr_resolve = shader_modules.emplace_back(ctx.get_device(), shader_spv_path / "ui.instruction_resolve_comp.spv");
-#endif
+	auto& shader_instr_resolve = load("ui.instruction_resolve_comp");
 
 	using namespace backend::vulkan;
 	bundle.create_info = renderer_create_info{
@@ -431,6 +448,11 @@ void render_context::load_default_assets(){
 
 backend::vulkan::context& render_context::context(){
 	return ctx_;
+}
+
+vk::shader_module render_context::load_shader(const std::string_view name){
+	return load_builtin_shader(context(), name,
+		config_.shader_spv_path.empty() ? default_shader_spv_path() : config_.shader_spv_path);
 }
 
 renderer_create_info_bundle render_context::make_renderer_create_info(){

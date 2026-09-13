@@ -2,10 +2,6 @@
 #include <vulkan/vulkan.h>
 // See gui.config/default/render_context.cpp: under mcpp the shaders are
 // compiled in and reached through this generated header.
-#ifdef XRGUI_SHADER_SURFACE
-#include <xrgui.shaders.h>
-#endif
-
 import std;
 
 import mo_yanxi.vk;
@@ -148,18 +144,7 @@ void prepare(mo_yanxi::gui::cfg::render_context& gui_context){
 	using namespace graphic;
 
 	auto& ctx = gui_context.context();
-#ifdef XRGUI_SHADER_SURFACE
-	auto shader = [&](const xrgui::shaders::payload& p){
-		return vk::shader_module{ctx.get_device(),
-			std::span<const std::uint32_t>{p.code, p.size_bytes / sizeof(std::uint32_t)}};
-	};
-	namespace sh = xrgui::shaders::post_process;
-#else
-	const auto shader_spv_path = std::filesystem::current_path().append("assets/shader/spv").make_preferred();
-	auto shader = [&](std::string_view file){
-		return vk::shader_module{ctx.get_device(), shader_spv_path / file};
-	};
-#endif
+	auto shader = [&](const std::string_view name){ return gui_context.load_shader(name); };
 	auto renderer_create_bundle = gui_context.make_renderer_create_info();
 	backend::vulkan::renderer renderer{std::move(renderer_create_bundle.create_info)};
 	auto& image_atlas = gui_context.image_atlas();
@@ -171,25 +156,14 @@ void prepare(mo_yanxi::gui::cfg::render_context& gui_context){
 	log::info({"Compositor"}, "initialize");
 
 	compositor::manager manager{ctx.get_allocator()};
-#ifdef XRGUI_SHADER_SURFACE
-	compositor::compute_shader_info shader_filter_high_light{shader(sh::highlight_extract())};
-	compositor::compute_shader_info shader_merge{shader(xrgui::shaders::ui::merge())};
-	vk::shader_module shader_present_vert{shader(sh::fullscreen_present_vert())};
-	vk::shader_module shader_present_frag{shader(sh::fullscreen_present_frag())};
+	compositor::compute_shader_info shader_filter_high_light{shader("post_process.highlight_extract")};
+	compositor::compute_shader_info shader_merge{shader("ui.merge")};
+	vk::shader_module shader_present_vert{shader("post_process.fullscreen_present.vert")};
+	vk::shader_module shader_present_frag{shader("post_process.fullscreen_present.frag")};
 
 	vk::sampler sampler_blit{ctx.get_device(), vk::preset::default_blit_sampler};
-	compositor::compute_shader_info shader_bloom{shader(sh::bloom())};
-	auto make_bloom_shader = [&]{ return shader(sh::bloom()); };
-#else
-	compositor::compute_shader_info shader_filter_high_light{shader("post_process.highlight_extract.spv")};
-	compositor::compute_shader_info shader_merge{shader("ui.merge.spv")};
-	vk::shader_module shader_present_vert{shader("post_process.fullscreen_present.vert.spv")};
-	vk::shader_module shader_present_frag{shader("post_process.fullscreen_present.frag.spv")};
-
-	vk::sampler sampler_blit{ctx.get_device(), vk::preset::default_blit_sampler};
-	compositor::compute_shader_info shader_bloom{shader("post_process.bloom.spv")};
-	auto make_bloom_shader = [&]{ return shader("post_process.bloom.spv"); };
-#endif
+	compositor::compute_shader_info shader_bloom{shader("post_process.bloom")};
+	auto make_bloom_shader = [&]{ return shader("post_process.bloom"); };
 
 	auto& ui_input_base = manager.add_external_resource(compositor::resource_entity_external{
 			compositor::image_entity{}, compositor::resource_dependency{

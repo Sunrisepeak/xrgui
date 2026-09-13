@@ -25,8 +25,8 @@
 //
 //   4. Shaders and distributables, both from mcpp:plugins. mcpp.rules.slang
 //      compiles every .slang the constrained glob in mcpp.toml routed here,
-//      one ninja edge each, and generates xrgui.shaders.h -- the accessors
-//      render_context.cpp and the showcase main.cpp call under
+//      one ninja edge each, and generates xrgui.shaders.h, which
+//      render_context.cpp's load_builtin_shader reads under
 //      XRGUI_SHADER_SURFACE. mcpp.dist.appimage and mcpp.dist.wix declare the
 //      formats `mcpp pack --format` can ask for and submit nothing otherwise.
 //
