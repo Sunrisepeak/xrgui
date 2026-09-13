@@ -47,7 +47,7 @@ add_requires("simdutf", { optional = true })
 add_requires("toml++")
 
 if is_host_project then
-    add_requires("gtest")
+    add_requires("gtest", {configs = {main = true}})   -- gtest_main: tests/ has no main.cpp
 end
 
 rule("media.svg_to_bin")
@@ -267,7 +267,7 @@ if is_host_project then
         add_files("src/i18n/text_tree.react_flow.ixx", {public = true})
         add_files("src/i18n/text_tree.toml.ixx", {public = true})
         add_files("src/i18n/text_tree.toml.cpp")
-        add_files("src.tests/**.cpp")
+        add_files("tests/**.cpp")
     target_end()
 end
 

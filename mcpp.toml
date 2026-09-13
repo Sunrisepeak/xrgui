@@ -110,6 +110,12 @@ marzer.tomlplusplus   = "3.4.0"
 # conditional `import std;` in magic_enum.cppm that the module scanner rejects.
 neargye.magic_enum    = "0.9.8"
 
+# `mcpp test` builds every tests/**/*.cpp into its own program; the `main`
+# feature is gtest_main, so no test file defines main (xmake links the same
+# object through its gtest package's `main` config).
+[dev-dependencies]
+compat.gtest = { version = "1.17.0", features = ["main"] }
+
 # Build-time only, never linked. Compiled into build.mcpp as host modules:
 #   rules-slang    .slang -> SPIR-V, embedded; it declares xim:slang itself
 #   dist-appimage  `mcpp pack --format appimage` (Linux)
@@ -135,21 +141,10 @@ main              = "src.examples/main.cpp"
 required_features = ["examples"]
 windows_subsystem = "windows"
 
-# A feature-gated binary rather than mcpp's tests/** discovery: xmake's
-# xrgui.tests links a hand-picked subset of src/. CI runs it directly.
-[targets.xrgui_tests]
-kind              = "bin"
-main              = "src.tests/main.cpp"
-required_features = ["tests"]
-
 [features]
 default  = []
 examples = { sources = ["src.examples/**/*.ixx", "src.examples/**/*.cpp",
                         "!src.examples/main.cpp"] }
-tests    = { sources = ["src.tests/**/*.cpp", "!src.tests/main.cpp"] }
-
-[feature-deps.tests]
-compat.gtest = "1.17.0"
 
 # Linux only (the index recipe has no other platform): src/platform/font.ixx
 # calls fontconfig under __linux__.

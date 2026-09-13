@@ -103,13 +103,8 @@ jobs:
       - name: mcpp — build xrgui_example
         run: mcpp build --features examples
 
-      - name: mcpp — build and run xrgui_tests
-        run: |
-          mcpp build --features tests
-          exe=$(find target -type f -name xrgui_tests | head -1)
-          [ -n "$exe" ] || { echo "xrgui_tests was not produced"; exit 1; }
-          echo "Running $exe"
-          "$exe"
+      - name: mcpp — build and run the tests
+        run: mcpp test
 
       # `--profile dev` so the pack reuses the build above rather than
       # compiling the tree a second time under release; the artifact is a
