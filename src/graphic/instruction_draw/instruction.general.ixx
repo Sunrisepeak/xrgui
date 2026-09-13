@@ -72,15 +72,19 @@ public:
 
 	~instruction_buffer() = default;
 
-	[[nodiscard]] FORCE_INLINE CONST_FN std::size_t size() const noexcept{
+	// Not CONST_FN: these read storage_, which resize_and_overwrite replaces.
+	// [[gnu::const]] told clang the result depends on `this` alone, so at -O2 a
+	// data() before a resize was reused after it -- a null pointer into memcpy
+	// (MSVC has no such attribute, which is why the release build ran there).
+	[[nodiscard]] FORCE_INLINE std::size_t size() const noexcept{
 		return storage_.size();
 	}
 
-	[[nodiscard]] FORCE_INLINE CONST_FN std::byte* begin() const noexcept{
+	[[nodiscard]] FORCE_INLINE std::byte* begin() const noexcept{
 		return std::assume_aligned<align>(const_cast<std::byte*>(storage_.data()));
 	}
 
-	[[nodiscard]] FORCE_INLINE CONST_FN std::byte* data() const noexcept{
+	[[nodiscard]] FORCE_INLINE std::byte* data() const noexcept{
 		return std::assume_aligned<align>(const_cast<std::byte*>(storage_.data()));
 	}
 
@@ -90,7 +94,7 @@ public:
 		}
 	}
 
-	[[nodiscard]] FORCE_INLINE CONST_FN std::byte* end() const noexcept{
+	[[nodiscard]] FORCE_INLINE std::byte* end() const noexcept{
 		auto* const first = const_cast<std::byte*>(storage_.data());
 		return first == nullptr ? nullptr : std::assume_aligned<align>(first + storage_.size());
 	}
