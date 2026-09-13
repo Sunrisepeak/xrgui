@@ -192,15 +192,8 @@ jobs:
       - name: mcpp — build xrgui_example
         run: mcpp build --features examples
 
-      - name: mcpp — build and run xrgui_tests
-        shell: pwsh
-        run: |
-          mcpp build --features tests
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-          $exe = Get-ChildItem -Path target -Filter xrgui_tests.exe -Recurse | Select-Object -First 1
-          if (-not $exe) { Write-Error "xrgui_tests.exe was not produced"; exit 1 }
-          & $exe.FullName
-          if ($LASTEXITCODE -ne 0) { Write-Error "tests failed"; exit $LASTEXITCODE }
+      - name: mcpp — build and run the tests
+        run: mcpp test
 
       # `--profile dev` reuses the build above; the artifact is a smoke test,
       # not a release. WiX is a .NET tool the `msi` member finds on PATH; 6.0.2
