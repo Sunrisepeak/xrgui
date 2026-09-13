@@ -1,0 +1,27 @@
+# The minimal application: `mcpp run -p hello` from the repository root.
+# The entry file is templates/hello's, so the example and the template are
+# one program; templates/hello/mcpp.toml.in is this manifest as a consumer
+# writes it (a version instead of a path).
+[package]
+name    = "xrgui_hello"
+version = "0.1.0"
+
+[dependencies]
+xrgui = { path = "../.." }
+
+[build]
+accel = "vulkan1.3"     # the device axis is the root build's; it routes xrgui's shaders
+
+[resources]
+icon = "../../properties/assets/images/xrgui.ico"
+
+[targets.xrgui_hello]
+kind              = "bin"
+main              = "../../templates/hello/src/main.cpp"
+windows_subsystem = "windows"
+
+# As the root's release profile: NDEBUG, which is what the showcase keys its
+# validation layers on (xmake's mode.release defines it too).
+[profile.release]
+opt      = 2
+cxxflags = ["-DNDEBUG"]

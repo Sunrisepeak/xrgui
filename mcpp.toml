@@ -55,7 +55,7 @@ defines = [
   # compat.msdfgen is built without MSDFGEN_USE_CPP11; msdf.{cpp,ixx} must agree.
   "XRGUI_MSDFGEN_NO_CPP11",
   # The shaders are reached through the generated xrgui.shaders.h, not loaded
-  # from .spv files. render_context.cpp and the showcase main.cpp switch on it.
+  # from .spv files; render_context.cpp's load_builtin_shader switches on it.
   "XRGUI_SHADER_SURFACE",
 ]
 
@@ -70,10 +70,6 @@ deploy = [
   { from = "properties/assets/markdown/preview.md",              to = "assets/markdown" },
   { from = "properties/assets/test.csv",                         to = "assets" },
 ]
-
-# Windows executable icon and version block (from [package]); nothing elsewhere.
-[resources]
-icon = "properties/assets/images/xrgui.ico"
 
 # xrepo's nanosvg installs its headers one directory deeper than upstream, and
 # this repo writes <nanosvg/nanosvg.h>; two forwarding headers keep both builds
@@ -130,24 +126,15 @@ plugins = { version = "0.7.1", features = ["rules-slang", "dist-appimage", "dist
 [build-dependencies]
 svg_outline = { path = "mcpp/svg_outline", tools = ["svg-outline"] }
 
-# The two programs' entry points live under templates/: the same files are
-# what `mcpp new <app> --template xrgui:hello` (or `:showcase`) copies into a
-# new project, so the examples ARE the templates. GUI programs get no console
-# window on Windows; nothing changes elsewhere.
-[targets.xrgui_hello]
-kind              = "bin"
-main              = "templates/hello/src/main.cpp"
-windows_subsystem = "windows"
-
-[targets.xrgui_example]
-kind              = "bin"
-main              = "templates/showcase/src/main.cpp"
-required_features = ["examples"]
-windows_subsystem = "windows"
+# The library. The two programs are workspace members under examples/
+# (`mcpp run -p hello`, `mcpp run -p showcase`); their entry files live under
+# templates/, where `mcpp new <app> --template xrgui:hello` copies them from.
+[workspace]
+members = ["examples/hello", "examples/showcase"]
 
 [features]
 default  = []
-examples = { sources = ["src.examples/**/*.ixx", "src.examples/**/*.cpp"] }
+examples = { sources = ["src.examples/**/*.ixx", "src.examples/**/*.cpp"] }   # the showcase pages
 
 # Linux only (the index recipe has no other platform): src/platform/font.ixx
 # calls fontconfig under __linux__.

@@ -87,7 +87,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.mcpp
-          key: mcpp-${{ matrix.name }}-${{ env.MCPP_VER }}-${{ hashFiles('mcpp.toml', 'mcpp/**/mcpp.toml', 'mcpp/**/*.ixx', 'mcpp/patches/*.patch', 'build.mcpp') }}
+          key: mcpp-${{ matrix.name }}-${{ env.MCPP_VER }}-${{ hashFiles('mcpp.toml', 'examples/*/mcpp.toml', 'mcpp/**/mcpp.toml', 'mcpp/**/*.ixx', 'mcpp/patches/*.patch', 'build.mcpp') }}
 
       # The manifest pins the toolchain; this is where a cold cache installs
       # it, and the assertion is what catches a build about to run on the
@@ -97,11 +97,8 @@ jobs:
           out=$(mcpp why toolchain 2>&1); echo "$out"
           echo "$out" | grep -q 'llvm.*22\.1\.8\|clang.*22' || { echo "mcpp did not resolve llvm@22.1.8"; exit 1; }
 
-      - name: mcpp — build the library and xrgui_hello
-        run: mcpp build
-
-      - name: mcpp — build xrgui_example
-        run: mcpp build --features examples
+      - name: mcpp — build the library and both applications
+        run: mcpp build --workspace
 
       - name: mcpp — build and run the tests
         run: mcpp test
@@ -111,13 +108,12 @@ jobs:
       # smoke-test bundle, not a release. The AppImage member declares
       # appimagetool itself. Linux only: mcpp's built-in closure walk does not
       # do Mach-O programs yet, and a `.app` is a separate member.
-      - name: mcpp — pack (vendored tarball and AppImage)
+      - name: mcpp — pack hello (vendored tarball and AppImage)
         if: matrix.os == 'ubuntu-24.04'
+        working-directory: examples/hello
         run: |
-          # Named: two bin targets are declared and only one is in this
-          # feature set, so a bare `mcpp pack` cannot settle on it.
-          mcpp pack --profile dev xrgui_hello
-          mcpp pack --profile dev --format appimage xrgui_hello
+          mcpp pack --profile dev
+          mcpp pack --profile dev --format appimage
           ls -la target/dist/
           test -n "$(ls target/dist/*.tar.gz 2>/dev/null)"
           test -n "$(find target -name '*.AppImage' | head -1)"
@@ -128,6 +124,6 @@ jobs:
         with:
           name: xrgui-mcpp-${{ matrix.name }}
           path: |
-            target/dist/
-            target/**/*.AppImage
+            examples/hello/target/dist/
+            examples/hello/target/**/*.AppImage
           if-no-files-found: ignore

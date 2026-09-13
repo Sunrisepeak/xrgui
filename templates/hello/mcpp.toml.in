@@ -22,3 +22,9 @@ windows_subsystem = "windows"   # a GUI program: no console window on Windows
 [toolchain]
 linux = "llvm@22.1.8"
 macos = "llvm@22.1.8"
+
+# As the root's release profile: NDEBUG, which is what the showcase keys its
+# validation layers on (xmake's mode.release defines it too).
+[profile.release]
+opt      = 2
+cxxflags = ["-DNDEBUG"]
