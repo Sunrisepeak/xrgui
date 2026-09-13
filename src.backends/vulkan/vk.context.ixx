@@ -188,15 +188,17 @@ public:
 		return allocator_;
 	}
 
+	// The swapchain images' extent, which is what everything sized from here
+	// renders into. Not the window's cached size: after a resize the surface
+	// already reports the new extent while GLFW's copy waits for the next
+	// poll_events, and a renderer or compositor rebuilt at the stale size
+	// draws past the edge of the new images (VK_ERROR_DEVICE_LOST on NVIDIA).
 	[[nodiscard]] VkExtent2D get_extent() const noexcept{
-		auto sz = window().get_size();
-		sz.width = sz.width ? sz.width : 32;
-		sz.height = sz.height ? sz.height : 32;
-		return sz;
+		return swap_chain_extent;
 	}
 
 	[[nodiscard]] VkExtent3D get_extent3() const noexcept{
-		return {window().get_size().width, window().get_size().height, static_cast<std::uint32_t>(1)};
+		return {swap_chain_extent.width, swap_chain_extent.height, 1u};
 	}
 
 	[[nodiscard]] VkRect2D get_screen_area() const noexcept{
