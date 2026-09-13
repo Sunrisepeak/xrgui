@@ -170,7 +170,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.mcpp
-          key: mcpp-win-${{ env.MCPP_VER }}-${{ env.MCPP_MSVC_TOOLSET }}-${{ hashFiles('mcpp.toml', 'mcpp/**/mcpp.toml', 'mcpp/**/*.ixx', 'mcpp/patches/*.patch', 'build.mcpp') }}
+          key: mcpp-win-${{ env.MCPP_VER }}-${{ env.MCPP_MSVC_TOOLSET }}-${{ hashFiles('mcpp.toml', 'src.hello/mcpp.toml', 'src.examples/mcpp.toml', 'mcpp/**/mcpp.toml', 'mcpp/**/*.ixx', 'mcpp/patches/*.patch', 'build.mcpp') }}
 
       # `mcpp why toolchain` resolves [toolchain] the way the build will, and
       # on the managed leg it is also where a cold cache installs the toolset
@@ -186,11 +186,8 @@ jobs:
               Write-Error "mcpp did not resolve msvc $env:MCPP_MSVC_TOOLSET (${{ matrix.origin }} leg)"; exit 1
           }
 
-      - name: mcpp — build the library and xrgui_hello
-        run: mcpp build
-
-      - name: mcpp — build xrgui_example
-        run: mcpp build --features examples
+      - name: mcpp — build the library and both applications
+        run: mcpp build --workspace
 
       - name: mcpp — build and run the tests
         run: mcpp test
@@ -198,15 +195,14 @@ jobs:
       # `--profile dev` reuses the build above; the artifact is a smoke test,
       # not a release. WiX is a .NET tool the `msi` member finds on PATH; 6.0.2
       # because v7 wants a licence accepted interactively (WIX7015).
-      - name: mcpp — pack (zip and MSI)
+      - name: mcpp — pack hello (zip and MSI)
         shell: pwsh
+        working-directory: src.hello
         run: |
-          # Named: two bin targets are declared and only one is in this
-          # feature set, so a bare `mcpp pack` cannot settle on it.
-          mcpp pack --profile dev xrgui_hello
+          mcpp pack --profile dev
           if ($LASTEXITCODE -ne 0) { exit 1 }
           dotnet tool install --global wix --version 6.0.2
-          mcpp pack --profile dev --format msi xrgui_hello
+          mcpp pack --profile dev --format msi
           if ($LASTEXITCODE -ne 0) { exit 1 }
           Get-ChildItem target/dist -Recurse | Select-Object FullName, Length
           if (-not (Get-ChildItem target -Filter *.msi -Recurse)) { Write-Error "no MSI was produced"; exit 1 }
@@ -218,6 +214,6 @@ jobs:
           # Per leg: the two legs' binaries are not interchangeable.
           name: xrgui-mcpp-windows-${{ matrix.origin }}
           path: |
-            target/dist/
-            target/**/*.msi
+            src.hello/target/dist/
+            src.hello/target/**/*.msi
           if-no-files-found: ignore
