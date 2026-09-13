@@ -4,6 +4,7 @@ import mo_yanxi.gui.cfg.builtin.constants;
 import mo_yanxi.gui.md_builder;
 import mo_yanxi.gui.style.elem_style_draw_primitives;
 import mo_yanxi.gui.style.tree.bounds;
+import mo_yanxi.views;
 
 void mo_yanxi::gui::cfg::builtin::set_cursors(scene& scene){
 	auto& cm = scene.resources().cursor_collection_manager;
@@ -221,7 +222,7 @@ void example_scene::draw_impl(rect clip){
 		if((flags & elem_tree_channel::tooltip) != elem_tree_channel{}){
 			auto seq = tooltips().get_draw_sequence();
 			call_stack_tooltip_.resize(seq.size());
-			for(auto&& [idx, elem] : seq | std::views::enumerate){
+			for(auto&& [idx, elem] : seq | mo_yanxi::views::enumerate){
 				draw_recorder rec{call_stack_tooltip_[idx]};
 				elem.element->record_draw_layer(rec);
 			}
@@ -230,7 +231,7 @@ void example_scene::draw_impl(rect clip){
 		if((flags & elem_tree_channel::overlay) != elem_tree_channel{}){
 			auto seq = overlays().get_draw_sequence();
 			call_stack_overlay_.resize(seq.size());
-			for(auto&& [idx, elem] : seq | std::views::enumerate){
+			for(auto&& [idx, elem] : seq | mo_yanxi::views::enumerate){
 				draw_recorder rec{call_stack_overlay_[idx]};
 				elem->record_draw_layer(rec);
 			}

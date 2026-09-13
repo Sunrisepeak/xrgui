@@ -1,5 +1,8 @@
 module;
 
+// Aligned operator new: see input_event_queue.ixx.
+#include <new>
+
 #include <cassert>
 
 export module mo_yanxi.gui.text_edit_core;

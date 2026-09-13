@@ -17,6 +17,8 @@ import mo_yanxi.heterogeneous;
 import std;
 
 export import mo_yanxi.vk.universal_handle;
+import mo_yanxi.views;
+import mo_yanxi.functional;
 
 using namespace mo_yanxi::vk;
 
@@ -85,7 +87,7 @@ private:
 	circular_array<InFlightData, 3> sync_arr{};
 	swap_chain_staging_image_data final_staging_image{};
 
-	string_hash_map<std::move_only_function<void(context&, const window_instance::resize_event&) const>> eventManager{};
+	string_hash_map<mo_yanxi::move_only_function<void(context&, const window_instance::resize_event&) const>> eventManager{};
 
 	std::vector<void(*)() noexcept> append_disposers{};
 
@@ -229,7 +231,7 @@ public:
 	}
 
 	void register_post_resize(const std::string_view name,
-	                          std::move_only_function<void(context&, const window_instance::resize_event&) const>&&
+	                          mo_yanxi::move_only_function<void(context&, const window_instance::resize_event&) const>&&
 	                          callback){
 		auto [itr, suc] = eventManager.try_emplace(name, std::move(callback));
 		if(suc){
@@ -342,7 +344,7 @@ private:
 		swap_chain_frames.clear();
 		swap_chain_frames.resize(images.size());
 
-		for(auto&& [index, imageGroup] : swap_chain_frames | std::ranges::views::enumerate){
+		for(auto&& [index, imageGroup] : swap_chain_frames | mo_yanxi::views::enumerate){
 			imageGroup.image = images[index];
 			imageGroup.image_view = vk::image_view{
 				device,

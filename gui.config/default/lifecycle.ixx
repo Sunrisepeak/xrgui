@@ -5,6 +5,7 @@ import mo_yanxi.log;
 import mo_yanxi.platform;
 import mo_yanxi.font;
 import mo_yanxi.backend.glfw.window;
+import mo_yanxi.functional;
 
 namespace mo_yanxi::gui::cfg::builtin{
 
@@ -13,7 +14,7 @@ class teardown_stack{
 private:
 	struct entry{
 		std::string name;
-		std::move_only_function<void()> cleanup;
+		mo_yanxi::move_only_function<void()> cleanup;
 	};
 
 	std::vector<entry> stack_;
@@ -31,7 +32,7 @@ public:
 		run_all();
 	}
 
-	void push(std::string name, std::move_only_function<void()> cleanup){
+	void push(std::string name, mo_yanxi::move_only_function<void()> cleanup){
 		if(cleanup_started_){
 			log::error({"Lifecycle"}, "Cannot push '{}' to teardown_stack after cleanup has started", name);
 			return;

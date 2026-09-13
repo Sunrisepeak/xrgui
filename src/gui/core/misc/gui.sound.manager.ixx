@@ -120,7 +120,9 @@ public:
 	}
 };
 
-export inline void asset_group_deleter::operator()(asset_group* group) const noexcept{
+// No `export` on an out-of-class member definition (clang: "cannot export
+// 'operator()' as it is not at namespace scope"); the class exports it.
+inline void asset_group_deleter::operator()(asset_group* group) const noexcept{
 	delete group;
 }
 
@@ -171,8 +173,13 @@ public:
 		return groups_.contains(key);
 	}
 
+	// find-then-erase: heterogeneous erase is P2077 (C++23) and libc++ has
+	// not shipped it. Heterogeneous FIND is P0919 (C++20) and is there.
 	bool erase(std::string_view key) noexcept{
-		return groups_.erase(key) > 0u;
+		const auto it = groups_.find(key);
+		if(it == groups_.end()) return false;
+		groups_.erase(it);
+		return true;
 	}
 
 	void clear() noexcept{

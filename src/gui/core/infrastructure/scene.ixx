@@ -59,8 +59,11 @@ export struct elem;
 export using i18n_text_root_node = mo_yanxi::i18n::i18n_text_root_node;
 
 namespace util{
-void update_insert(elem& e, update_channel channel);
-void update_erase(const elem& e, update_channel channel);
+// Exported, as the definitions in :element are: otherwise these have module
+// linkage, the exported definitions cannot redeclare them, and the friend
+// declarations below match neither.
+export void update_insert(elem& e, update_channel channel);
+export void update_erase(const elem& e, update_channel channel);
 }
 
 /**
@@ -423,7 +426,10 @@ private:
 
 
 
-		constexpr auto operator<=>(const update_entry& o) const noexcept{
+		// Not `auto`: std::less<update_entry> reaches this during instantiation,
+		// before a deduced return type is usable (clang: "cannot be used before
+		// it is defined").
+		constexpr std::strong_ordering operator<=>(const update_entry& o) const noexcept{
 			return elem <=> o.elem;
 		}
 

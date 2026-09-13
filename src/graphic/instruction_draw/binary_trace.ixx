@@ -171,7 +171,7 @@ public:
 			auto phys_span = rec.src_span.to_span(record_data_.data());
 
 
-			for(size_t i = 0; i < data.size(); ++i){
+			for(std::size_t i = 0; i < data.size(); ++i){
 				entry_diffs_[diff_off + i] = phys_span[rel_offset + i] ^ data[i];
 			}
 

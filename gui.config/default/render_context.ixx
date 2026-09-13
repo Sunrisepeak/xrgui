@@ -13,6 +13,7 @@ export import mo_yanxi.backend.vulkan.context;
 export import mo_yanxi.backend.vulkan.renderer;
 export import mo_yanxi.graphic.image_atlas;
 export import mo_yanxi.font.manager;
+import mo_yanxi.functional;
 
 namespace mo_yanxi::gui::cfg{
 
@@ -30,7 +31,7 @@ struct render_context_config{
 	 * image registry sampler descriptor indices after registration.
 	 */
 	graphic::image_page_sampler_indices image_page_sampler_indices{};
-	std::move_only_function<void(backend::vulkan::renderer_create_info&)> configure_renderer_create_info{};
+	mo_yanxi::move_only_function<void(backend::vulkan::renderer_create_info&)> configure_renderer_create_info{};
 	bool initialize_gui_globals{true};
 	bool load_default_assets{true};
 };
@@ -53,6 +54,17 @@ export
 	graphic::image_view_registry& image_view_registry,
 	const std::filesystem::path& shader_spv_path);
 
+/**
+ * One of xrgui's own shaders, by the name properties/assets_raw/shader/config.toml
+ * gives it ("ui.draw.vert", "post_process.bloom"): compiled into the binary
+ * under mcpp, read from `<shader_spv_path>/<name>.spv` under xmake.
+ */
+export
+[[nodiscard]] vk::shader_module load_builtin_shader(
+	backend::vulkan::context& ctx,
+	std::string_view name,
+	const std::filesystem::path& shader_spv_path);
+
 export
 class render_context{
 public:
@@ -66,6 +78,8 @@ public:
 
 	backend::vulkan::context& context();
 	[[nodiscard]] renderer_create_info_bundle make_renderer_create_info();
+	/** load_builtin_shader with this context's device and configured shader directory. */
+	[[nodiscard]] vk::shader_module load_shader(std::string_view name);
 	graphic::image_view_registry& image_view_registry();
 	const graphic::image_view_registry& image_view_registry() const;
 	graphic::image_atlas& image_atlas();

@@ -3,7 +3,12 @@ module;
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+// Under mcpp the implementation comes from compat.miniaudio, which compiles
+// upstream's own miniaudio.c; instantiating it here as well would define every
+// ma_* symbol twice. xmake does not define this macro, so its build is unchanged.
+#ifndef XRGUI_MINIAUDIO_IMPL_PROVIDED
 #define MINIAUDIO_IMPLEMENTATION
+#endif
 #include <miniaudio.h>
 #ifdef min
 #undef min

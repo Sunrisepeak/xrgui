@@ -20,6 +20,7 @@ import mo_yanxi.vk.util.uniform;
 import mo_yanxi.vk.util;
 import mo_yanxi.vk;
 import mo_yanxi.gui.alloc;
+import mo_yanxi.views;
 
 
 namespace mo_yanxi::backend::vulkan{
@@ -179,12 +180,16 @@ public:
 
 	template <typename S>
 	[[nodiscard]] auto get_state_of(this S& self, const unsigned attachment_idx) noexcept{
-		return std::span{self.blend_states.data() + attachment_idx * blending_state_count, blending_state_count};
+		// Through `self`: an explicit object member function has no implicit
+		// `this`, so an unqualified member name does not resolve. The first
+		// operand already spelled it; these two did not.
+		return std::span{self.blend_states.data() + attachment_idx * self.blending_state_count,
+		                 self.blending_state_count};
 	}
 
 	template <typename S>
 	[[nodiscard]] auto get_state_range(this S& self) noexcept {
-		return self.blend_states | std::views::chunk(self.blending_state_count);
+		return self.blend_states | mo_yanxi::views::chunk(self.blending_state_count);
 	}
 };
 
@@ -538,7 +543,7 @@ public:
 
 	//TODO loose the allocator constrain
 	template <std::ranges::input_range Rng>
-		requires (std::same_as<std::ranges::range_const_reference_t<Rng>, const user_data_table&>)
+		requires (std::same_as<mo_yanxi::ranges::range_const_reference_t<Rng>, const user_data_table&>)
 	[[nodiscard]] uniform_buffer_manager(const vk::allocator_usage& allocator, const Rng& rng) : merged_user_data_table_([&]{
 		user_data_table table{};
 		for(const auto& t : rng){

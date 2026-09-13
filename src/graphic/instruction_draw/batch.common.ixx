@@ -10,6 +10,7 @@ export import mo_yanxi.binary_trace;
 
 import std;
 import mo_yanxi.raw_byte_buffer;
+import mo_yanxi.views;
 
 namespace mo_yanxi::graphic::g2d{
 
@@ -277,7 +278,7 @@ private:
 	std::uint32_t pushedPrimitives{}; // 移除了 pushedVertices，现在只关心总图元数
 
 	FORCE_INLINE void setup_current_dispatch_group_info(){
-		for(const auto& [i, vertex_data_entry] : vertex_data_entries_ | std::views::enumerate){
+		for(const auto& [i, vertex_data_entry] : vertex_data_entries_ | mo_yanxi::views::enumerate){
 			const std::uint32_t idx = static_cast<std::uint32_t>(vertex_data_entries_.size() * currentDispatchCount + i);
 			auto timeline = vertex_data_entry.get_current_index();
 			group_initial_vertex_data_timestamps_[idx] = timeline;

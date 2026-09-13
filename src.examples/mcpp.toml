@@ -1,0 +1,26 @@
+# The showcase: `mcpp run -p showcase` from the repository root, or `mcpp run`
+# here. The pages beside this file are xrgui's `examples` feature; this
+# package is the entry point, main.cpp, and asks for that feature.
+[package]
+name    = "xrgui_example"
+version = "0.1.0"
+
+[dependencies]
+xrgui = { path = "..", features = ["examples"] }
+
+[build]
+accel = "vulkan1.3"
+
+[resources]
+icon = "../properties/assets/images/xrgui.ico"
+
+[targets.xrgui_example]
+kind              = "bin"
+main              = "main.cpp"
+windows_subsystem = "windows"
+
+# As the root's release profile: NDEBUG, which is what the showcase keys its
+# validation layers on (xmake's mode.release defines it too). Not inherited.
+[profile.release]
+opt      = 2
+cxxflags = ["-DNDEBUG"]

@@ -72,15 +72,19 @@ public:
 
 	~instruction_buffer() = default;
 
-	[[nodiscard]] FORCE_INLINE CONST_FN std::size_t size() const noexcept{
+	// Not CONST_FN: these read storage_, which resize_and_overwrite replaces.
+	// [[gnu::const]] told clang the result depends on `this` alone, so at -O2 a
+	// data() before a resize was reused after it -- a null pointer into memcpy
+	// (MSVC has no such attribute, which is why the release build ran there).
+	[[nodiscard]] FORCE_INLINE std::size_t size() const noexcept{
 		return storage_.size();
 	}
 
-	[[nodiscard]] FORCE_INLINE CONST_FN std::byte* begin() const noexcept{
+	[[nodiscard]] FORCE_INLINE std::byte* begin() const noexcept{
 		return std::assume_aligned<align>(const_cast<std::byte*>(storage_.data()));
 	}
 
-	[[nodiscard]] FORCE_INLINE CONST_FN std::byte* data() const noexcept{
+	[[nodiscard]] FORCE_INLINE std::byte* data() const noexcept{
 		return std::assume_aligned<align>(const_cast<std::byte*>(storage_.data()));
 	}
 
@@ -90,7 +94,7 @@ public:
 		}
 	}
 
-	[[nodiscard]] FORCE_INLINE CONST_FN std::byte* end() const noexcept{
+	[[nodiscard]] FORCE_INLINE std::byte* end() const noexcept{
 		auto* const first = const_cast<std::byte*>(storage_.data());
 		return first == nullptr ? nullptr : std::assume_aligned<align>(first + storage_.size());
 	}
@@ -443,7 +447,9 @@ struct emit_t{
 	FORCE_INLINE constexpr decltype(auto) operator()(Sink& sink, Instr&& instr) const
 		noexcept(noexcept(sink(std::forward<Instr>(instr)))){
 		ATTR_FORCEINLINE_SENTENCE
-		ADAPTED_MUST_TAIL
+		// No ADAPTED_MUST_TAIL: [[clang::musttail]] requires the callee's
+		// signature to match the caller's, and it does not here (MSVC accepted
+		// the attribute silently).
 		return sink(std::forward<Instr>(instr));
 	}
 
@@ -452,7 +458,7 @@ struct emit_t{
 	FORCE_INLINE constexpr decltype(auto) operator()(Sink& sink, Instr&& instr) const
 		noexcept(noexcept(std::forward<Instr>(instr)(*this, sink))){
 		ATTR_FORCEINLINE_SENTENCE
-		ADAPTED_MUST_TAIL
+		// No ADAPTED_MUST_TAIL, as above.
 		return std::forward<Instr>(instr)(*this, sink);
 	}
 };
@@ -632,8 +638,12 @@ struct alignas(instr_required_align) quad_group{
 
 
 
+	// `!std::convertible_to<const Ty&, quad_group>` was dropped from the
+	// constraint: it asks about the class being defined, and clang reports the
+	// satisfaction as depending on itself. The overloads above already exclude
+	// what it excluded.
 	template <typename Ty>
-		requires (std::constructible_from<T, const Ty&> && !std::convertible_to<const Ty&, quad_group> && !spec_of<Ty, quad_group>)
+		requires (std::constructible_from<T, const Ty&> && !spec_of<Ty, quad_group>)
 	[[nodiscard]] FORCE_INLINE explicit(false) constexpr quad_group(const Ty& v) noexcept : values{T(v), T(v), T(v), T(v)}{}
 
 	template <typename Ty>

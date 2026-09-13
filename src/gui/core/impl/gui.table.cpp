@@ -2,16 +2,14 @@ module;
 
 #include <cassert>
 
-#ifndef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
 #include <gch/small_vector.hpp>
-#endif
 
 module mo_yanxi.gui.elem.table;
 
+import mo_yanxi.views;
+import mo_yanxi.math;
 
-#ifdef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
-import <gch/small_vector.hpp>;
-#endif
+
 
 namespace mo_yanxi::gui{
 
@@ -162,12 +160,12 @@ math::vec2 table_layout_context::restricted_allocate_pendings(const std::span<co
 			} else {
 				if(float major_sum{std::ranges::fold_left(remain_major_pending_sizes, 0.f, std::plus{})}; major_sum > 0){
 					if(const auto ratio = passive_usable_extent.*major_target / major_sum; ratio < 1){
-						for(auto [midx, new_] : remain_major_pending_sizes | std::views::enumerate){
+						for(auto [midx, new_] : remain_major_pending_sizes | mo_yanxi::views::enumerate){
 							if(new_ > 0) at_major(static_cast<table_size_t>(midx)).max_size = {layout::size_category::mastering, new_ * ratio};
 						}
 						passive_usable_extent.*major_target = 0;
 					} else{
-						for(auto [midx, new_] : remain_major_pending_sizes | std::views::enumerate){
+						for(auto [midx, new_] : remain_major_pending_sizes | mo_yanxi::views::enumerate){
 							if(new_ > 0) at_major(static_cast<table_size_t>(midx)).max_size = {layout::size_category::mastering, new_};
 						}
 						passive_usable_extent.*major_target -= major_sum;

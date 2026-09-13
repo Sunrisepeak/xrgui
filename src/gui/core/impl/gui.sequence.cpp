@@ -1,14 +1,12 @@
 module;
 
-#ifndef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
 #include <gch/small_vector.hpp>
-#endif
 
 module mo_yanxi.gui.elem.sequence;
 
-#ifdef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
-import <gch/small_vector.hpp>;
-#endif
+import mo_yanxi.views;
+import mo_yanxi.math;
+
 
 namespace mo_yanxi::gui{
 
@@ -172,7 +170,7 @@ void sequence::layout_elem(){
 	math::vec2 currentOff{};
 	currentOff.*minorTarget = minor_offset - cells_.front().cell.pad.pre;
 
-	for (auto&& [idx, cell] : cells_ | std::views::enumerate){
+	for (auto&& [idx, cell] : cells_ | mo_yanxi::views::enumerate){
 		currentOff.*minorTarget += cell.cell.pad.pre;
 		auto minor = sizes[idx];
 		if(cell.cell.stated_size.type == layout::size_category::passive)minor *= passive_unit;

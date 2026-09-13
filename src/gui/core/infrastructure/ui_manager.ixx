@@ -125,7 +125,11 @@ public:
 
 	inline void erase_resource(std::string_view name) noexcept {
 		std::lock_guard lock(resources_mutex_);
-		resources.erase(name);
+		// find-then-erase: heterogeneous erase is P2077 (C++23) and libc++ has
+		// not shipped it. Heterogeneous FIND is P0919 (C++20) and is there.
+		if(const auto it = resources.find(name); it != resources.end()){
+			resources.erase(it);
+		}
 	}
 
 	inline scene* get_scene(const std::string_view sceneName){

@@ -47,7 +47,7 @@ add_requires("simdutf", { optional = true })
 add_requires("toml++")
 
 if is_host_project then
-    add_requires("gtest")
+    add_requires("gtest", {configs = {main = true}})   -- gtest_main: tests/ has no main.cpp
 end
 
 rule("media.svg_to_bin")
@@ -98,8 +98,6 @@ local function add_xrgui_core_deps()
 
     add_defines("MO_YANXI_ALLOCATOR_2D_USE_STD_MODULE", "MO_YANXI_ALLOCATOR_2D_HAS_MATH_VECTOR2", {public = true})
     add_defines("MO_YANXI_DATA_FLOW_DISABLE_THREAD_CHECK", {public = true})
-    -- msvc 新版好像没这问题了，哪天删了，，，
-    add_defines("XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE", {public = true})
 
     add_files("./external/allocator2d/include/mo_yanxi/allocator2d.ixx", {public = true})
     add_files(path.join(magic_enum_dir, "module/magic_enum.cppm"), {
@@ -107,6 +105,11 @@ local function add_xrgui_core_deps()
     })
     add_files("./src/**.cpp")
     add_files("./src/**.ixx", {public = true})
+
+    -- Two module interfaces kept beside the mcpp manifest: mo_yanxi.views and
+    -- mo_yanxi.functional shim C++23 facilities libc++ lacks and resolve to
+    -- std:: where the library has them (MSVC's does). src/ imports them.
+    add_files("./mcpp/mo_yanxi_utility/views.ixx", "./mcpp/mo_yanxi_utility/functional.ixx", {public = true})
 
     --add_cxflags("/wd4267", "/wd4244", "/wd4305", {tools = {"cl", "clang_cl"}})
 end
@@ -264,7 +267,7 @@ if is_host_project then
         add_files("src/i18n/text_tree.react_flow.ixx", {public = true})
         add_files("src/i18n/text_tree.toml.ixx", {public = true})
         add_files("src/i18n/text_tree.toml.cpp")
-        add_files("src.tests/**.cpp")
+        add_files("tests/**.cpp")
     target_end()
 end
 

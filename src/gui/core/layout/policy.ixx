@@ -10,9 +10,13 @@ import mo_yanxi.math.vector2;
 import mo_yanxi.math;
 
 namespace mo_yanxi::gui::layout{
-export struct illegal_layout : std::exception{
+// std::runtime_error, not std::exception: the string-taking constructor is an
+// MSVC extension and the standard type has none, so `: exception(msg)` does not
+// compile on clang or GCC. runtime_error owns the message and its what() is
+// already noexcept.
+export struct illegal_layout : std::runtime_error{
 	[[nodiscard]] explicit illegal_layout(char const* msg)
-		: exception(msg){
+		: runtime_error(msg){
 	}
 
 	[[nodiscard]] illegal_layout() : illegal_layout{"Illegal Layout"}{

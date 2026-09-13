@@ -196,7 +196,7 @@ public:
 };
 
 export template <typename T = float>
-using simple_animator = animator<T, anime_dynamic_spec_v<T>, 0, 0>;
+using simple_animator = animator<T, anime_dynamic_spec_v<T>, T{}, T{}>;   // `0` is an int; int -> float is not allowed in a converted constant expression (clang enforces, MSVC does not)
 
 export template <typename T = float>
 using delayed_animator = animator<T, anime_dynamic_spec_v<T>, anime_dynamic_spec_v<T>, anime_dynamic_spec_v<T>>;

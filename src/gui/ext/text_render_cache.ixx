@@ -1,3 +1,8 @@
+module;
+
+// Aligned operator new: see input_event_queue.ixx.
+#include <new>
+
 //
 // Created by Matrix on 2026/3/15.
 //
@@ -15,6 +20,7 @@ import mo_yanxi.graphic.g2d;
 import mo_yanxi.gui.alloc;
 import mo_yanxi.gui.util;
 import align;
+import mo_yanxi.views;
 
 namespace mo_yanxi::gui {
 export
@@ -32,7 +38,7 @@ void record_elems(
 
 		for(const auto& [idx, val] : std::span{
 			    glyph_layout.elems.begin() + current_line.glyph_range.pos, current_line.glyph_range.size
-		    } | std::views::enumerate){
+		    } | mo_yanxi::views::enumerate){
 			if(!val.texture->view) continue;
 			auto start = math::fma(static_cast<float>(idx), spacing, line_src + val.aabb.src);
 			std::invoke(

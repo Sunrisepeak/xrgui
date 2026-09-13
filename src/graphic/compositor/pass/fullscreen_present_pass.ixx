@@ -8,6 +8,9 @@ import std;
 export import mo_yanxi.graphic.compositor.manager;
 import mo_yanxi.vk;
 import mo_yanxi.vk.cmd;
+// vk:: names are used directly below. Module visibility is not transitive:
+// a module that USES a name must import the module that exports it.
+import mo_yanxi.vk.util;
 
 namespace mo_yanxi::graphic::compositor{
 export

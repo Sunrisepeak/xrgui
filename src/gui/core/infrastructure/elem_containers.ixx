@@ -41,9 +41,13 @@ public:
 		return **data_.insert(data_.begin() + where, raw);
 	}
 
-	[[nodiscard]] elem_ptr extract(std::size_t where) noexcept requires requires(Container& c){
-		{ c.erase(c.begin()) } noexcept;
-	}{
+	// `{ c.erase(...) } noexcept` held only on MSVC, whose vector::erase adds
+	// the specifier; what makes erase non-throwing is the tail move, so ask
+	// for that.
+	[[nodiscard]] elem_ptr extract(std::size_t where) noexcept
+		requires requires(Container& c){ c.erase(c.begin()); }
+		      && std::is_nothrow_move_assignable_v<typename Container::value_type>
+	{
 		elem_ptr p{data_[where]};
 		data_.erase(data_.begin() + where);
 		return p;

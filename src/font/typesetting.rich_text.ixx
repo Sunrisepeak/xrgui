@@ -5,17 +5,12 @@ module;
 #include <mo_yanxi/adapted_attributes.hpp>
 
 
-#ifndef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
 #include <gch/small_vector.hpp>
-#endif
 
 export module mo_yanxi.typesetting.rich_text;
 
 export import mo_yanxi.typesetting.util;
 
-#ifdef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
-import <gch/small_vector.hpp>;
-#endif
 
 import std;
 
@@ -72,7 +67,22 @@ struct rich_text_fallback_style {
 	bool enables_bold{false};
 	rich_text_token::wrap_frame_type wrap_frame_type{rich_text_token::wrap_frame_type::none};
 
-	constexpr friend bool operator==(const rich_text_fallback_style& lhs, const rich_text_fallback_style& rhs) noexcept = default;
+	// Written out rather than `= default`, and comparing `features` through its
+	// data pointer: <gch/small_vector.hpp> is in this file's global module
+	// fragment, so an importer sees neither gch's operator== nor its iterator's
+	// operator-, and a defaulted operator== would be synthesised there.
+	[[nodiscard]] constexpr friend bool operator==(
+		const rich_text_fallback_style& lhs, const rich_text_fallback_style& rhs) noexcept{
+		return lhs.offset == rhs.offset
+			&& lhs.color == rhs.color
+			&& lhs.family == rhs.family
+			&& std::equal(lhs.features.data(), lhs.features.data() + lhs.features.size(),
+			              rhs.features.data(), rhs.features.data() + rhs.features.size())
+			&& lhs.enables_underline == rhs.enables_underline
+			&& lhs.enables_italic == rhs.enables_italic
+			&& lhs.enables_bold == rhs.enables_bold
+			&& lhs.wrap_frame_type == rhs.wrap_frame_type;
+	}
 
 
 	// constexpr bool operator==(const rich_text_fallback_style&) const noexcept = default;

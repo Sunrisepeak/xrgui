@@ -1,0 +1,28 @@
+# The minimal application: `mcpp run -p hello` from the repository root, or
+# `mcpp run` here. A package of its own that depends on xrgui by path, as a
+# consumer would by version.
+[package]
+name    = "xrgui_hello"
+version = "0.1.0"
+
+[dependencies]
+xrgui = { path = ".." }
+
+# The device axis is the root build's: a dependency's own `accel` does not
+# set it. Naming Vulkan here is what routes xrgui's shaders to the Slang rule.
+[build]
+accel = "vulkan1.3"
+
+[resources]
+icon = "../properties/assets/images/xrgui.ico"
+
+[targets.xrgui_hello]
+kind              = "bin"
+main              = "main.cpp"
+windows_subsystem = "windows"   # a GUI program: no console window on Windows
+
+# As the root's release profile: NDEBUG, which is what the showcase keys its
+# validation layers on (xmake's mode.release defines it too). Not inherited.
+[profile.release]
+opt      = 2
+cxxflags = ["-DNDEBUG"]

@@ -1,0 +1,475 @@
+Portability fixes for mo_yanxi_vulkan_wrapper, applied by build.mcpp.
+
+All are upstream bugs rather than xrgui's, and all belong in
+Yuria-Shikibe/mo_yanxi_vulkan_wrapper; this file keeps the tree buildable off
+MSVC until they are.
+
+Two kinds, and they are not the same kind:
+
+  (a) NON-PORTABLE CODE, rewritten to standard C++. Nothing is conditional and
+      MSVC gets the same fix -- in two of the three, a real defect goes with it.
+  (b) STANDARD CODE a library has not caught up with. The code is right; libc++
+      has not shipped the facility. Those route through the mo_yanxi.views /
+      mo_yanxi.functional shims that mcpp/mo_yanxi_utility adds, and revert to
+      `std::` the day the #if in those files stops choosing the fallback.
+
+(a) --------------------------------------------------------------------------
+
+util/exception.ixx -- three types moved from std::exception to
+std::runtime_error. `std::exception(const char*)` is an MSVC extension; the
+standard type has no such constructor, so this did not compile on clang or GCC
+at all. The three what() overrides went with it: each only forwarded to the
+base, and each was declared without noexcept over a noexcept base, which is
+separately ill-formed. It also removes a real defect -- the argument was
+`msg.data()` on a std::string_view, not guaranteed NUL-terminated, so a view
+over part of a larger buffer produced a message that ran past its end.
+
+vk.vertex_consteval_def.ixx -- binding_class_finder rewritten from a
+conditional_t recursion to one `if constexpr` function. std::conditional_t
+instantiates BOTH arms, so the tail was evaluated even when the head attribute
+already matched; and because the attributes are non-type parameters of
+different types, deducing the one-attribute partial specialisation against a
+longer list made clang try to convert one attribute type to another. `if
+constexpr` discards the untaken branch, so neither arises.
+
+objects/physical_device.ixx -- two enumerate loops became index loops. One
+discarded the element and used only the index, so the adaptor bought nothing;
+the other is in a namespace that already has its own `enumerate`, so the
+unqualified name was taken.
+
+stack_trace.ixx -- the no-<stacktrace> fallback took one argument while its only
+caller passes two. The branch that exists FOR a library without <stacktrace> did
+not compile on one.
+
+vk.util.ixx -- `std::ranges::const_iterator_t<R>` -> `iterator_t<const R>`.
+const_iterator_t is P2278, which libc++ has not shipped. Both uses are in a
+`requires requires(...)` declaring a `value` parameter the body never mentions
+(the one line that did is commented out), so this changes what the constraint
+SPELLS and not what it accepts for any const-iterable range.
+
+stack_trace.cpp -- `import` hoisted out of `#if defined(__cpp_lib_stacktrace)`.
+mcpp's M1 scanner rejects an import inside a conditional preprocessor block,
+even an inactive one; importing unconditionally is harmless. NOT a
+`[scan_overrides]` declaration: that was tried and mcpp's audit rejected it,
+because an implementation unit also imports the module it belongs to AND
+whether meta_programming is imported depends on the macro -- so no fixed
+declaration is true on both MSVC and clang.
+
+(b) --------------------------------------------------------------------------
+
+cmd/cmd.render.ixx, objects/resources/{descriptor_buffer,command_buffer}.ixx,
+stack_trace.cpp -- `std::views::enumerate` -> `mo_yanxi::views::enumerate`, and
+`std::move_only_function` -> `mo_yanxi::move_only_function`.
+
+diff --git a/src/vk_wrap/cmd/cmd.render.ixx b/src/vk_wrap/cmd/cmd.render.ixx
+index b976504..16b7d93 100644
+--- a/src/vk_wrap/cmd/cmd.render.ixx
++++ b/src/vk_wrap/cmd/cmd.render.ixx
+@@ -6,6 +6,7 @@ export module mo_yanxi.vk.cmd:render;
+ 
+ import mo_yanxi.vk.util;
+ import std;
++import mo_yanxi.views;
+ 
+ namespace mo_yanxi::vk::cmd{
+ 
+@@ -46,7 +47,7 @@ namespace mo_yanxi::vk::cmd{
+ 		};
+ 
+ 		std::array<VkCommandBufferSubmitInfo, size> cmds{};
+-		for (const auto& [i, cmd] : cmds | std::views::enumerate){
++		for (const auto& [i, cmd] : cmds | mo_yanxi::views::enumerate){
+ 			cmd = VkCommandBufferSubmitInfo{
+ 				.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+ 				.commandBuffer = commandBuffer[i],
+@@ -100,7 +101,7 @@ namespace mo_yanxi::vk::cmd{
+ 			};
+ 
+ 		std::vector<VkCommandBufferSubmitInfo> cmds(commandBuffer.size());
+-		for(const auto& [i, cmd] : cmds | std::views::enumerate){
++		for(const auto& [i, cmd] : cmds | mo_yanxi::views::enumerate){
+ 			cmd = VkCommandBufferSubmitInfo{
+ 					.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+ 					.commandBuffer = commandBuffer[i],
+@@ -162,7 +163,7 @@ namespace mo_yanxi::vk::cmd{
+ 		std::array<VkSemaphoreSubmitInfo, S> signals{};
+ 
+ 		if constexpr (W){
+-			for (const auto & [i, semaphore] : toWait | std::views::enumerate){
++			for (const auto & [i, semaphore] : toWait | mo_yanxi::views::enumerate){
+ 				waits[i] = VkSemaphoreSubmitInfo{
+ 					.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+ 					.semaphore = semaphore,
+@@ -177,7 +178,7 @@ namespace mo_yanxi::vk::cmd{
+ 		}
+ 
+ 		if constexpr (S){
+-			for (const auto & [i, semaphore] : toSignal | std::views::enumerate){
++			for (const auto & [i, semaphore] : toSignal | mo_yanxi::views::enumerate){
+ 				signals[i] = VkSemaphoreSubmitInfo{
+ 					.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+ 					.semaphore = semaphore,
+diff --git a/src/vk_wrap/objects/physical_device.ixx b/src/vk_wrap/objects/physical_device.ixx
+index fc4848a..bc4ca36 100644
+--- a/src/vk_wrap/objects/physical_device.ixx
++++ b/src/vk_wrap/objects/physical_device.ixx
+@@ -10,6 +10,7 @@ import mo_yanxi.vk.util;
+ import :swap_chain_info;
+ 
+ import mo_yanxi.meta_programming;
++import mo_yanxi.views;
+ 
+ namespace mo_yanxi::vk{
+ 
+@@ -24,7 +25,10 @@ namespace mo_yanxi::vk{
+ 			void create_queues(VkDevice device, std::vector<VkQueue>& queues) const{
+ 				queues.resize(count);
+ 
+-				for (auto && [i, _] : queues | std::views::enumerate){
++				// A plain index loop: mo_yanxi::views::enumerate is C++23 and libc++ has
++				// not shipped it. The element was discarded here anyway -- only the
++				// index was used -- so the adaptor bought nothing.
++				for (std::size_t i = 0; i < queues.size(); ++i){
+ 					vkGetDeviceQueue(device, index, static_cast<std::uint32_t>(i), queues.data() + i);
+ 				}
+ 			}
+@@ -54,7 +58,11 @@ namespace mo_yanxi::vk{
+ 
+ 		[[nodiscard]] queue_family_indices(VkPhysicalDevice device, VkSurfaceKHR surface){
+ 			std::vector<VkQueueFamilyProperties> queueFamilies = enumerate(vkGetPhysicalDeviceQueueFamilyProperties, device);
+-			for(const auto& [index, queueFamily] : queueFamilies | std::ranges::views::enumerate){
++			// Index loop for the same reason as create_queues above, and for one
++			// more here: this namespace already has its own `enumerate` (called
++			// on the line above), so the unqualified name is taken.
++			for(std::size_t index = 0; index < queueFamilies.size(); ++index){
++				const auto& queueFamily = queueFamilies[index];
+ 				if(!queueFamily.queueCount) continue;
+ 
+ 				if(queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT){
+diff --git a/src/vk_wrap/objects/resources/command_buffer.ixx b/src/vk_wrap/objects/resources/command_buffer.ixx
+index d8f0610..3ff20a0 100644
+--- a/src/vk_wrap/objects/resources/command_buffer.ixx
++++ b/src/vk_wrap/objects/resources/command_buffer.ixx
+@@ -7,6 +7,7 @@ export module mo_yanxi.vk:command_buffer;
+ import mo_yanxi.handle_wrapper;
+ import mo_yanxi.vk.util;
+ import std;
++import mo_yanxi.views;
+ 
+ namespace mo_yanxi::vk{
+ namespace cmd{
+@@ -296,11 +297,11 @@ private:
+ 	std::uint64_t counting{};
+ 
+ public:
+-	span_type::const_iterator begin() const noexcept{
++	span_type::iterator begin() const noexcept{
+ 		return command_buffers.begin();
+ 	}
+ 
+-	span_type::const_iterator end() const noexcept{
++	span_type::iterator end() const noexcept{
+ 		return command_buffers.end();
+ 	}
+ 
+@@ -424,7 +425,7 @@ public:
+ 				.flags = 0
+ 			};
+ 
+-		for(auto&& [idx, value] : units | std::views::enumerate){
++		for(auto&& [idx, value] : units | mo_yanxi::views::enumerate){
+ 			value.command_buffers = std::span{command_buffers.begin() + idx * commands_per_chunk, command_buffers.begin() + idx * commands_per_chunk + commands_per_chunk};
+ 			if(const auto rst = ::vkCreateSemaphore(device, &semaphoreInfo, nullptr, &value.semaphore)){
+ 				throw vk_error(rst, "Failed to create semaphore!");
+@@ -503,7 +504,7 @@ public:
+ 
+ 	std::vector<VkSemaphoreSubmitInfo, typename std::allocator_traits<allocator_type>::template rebind_alloc<VkSemaphoreSubmitInfo>> get_waiting_semaphores(VkPipelineStageFlags2 stageFlags2) const {
+ 		std::vector<VkSemaphoreSubmitInfo, typename std::allocator_traits<allocator_type>::template rebind_alloc<VkSemaphoreSubmitInfo>> rst{units.size(), units.get_allocator()};
+-		for (const auto & [idx, u] : units | std::views::enumerate){
++		for (const auto & [idx, u] : units | mo_yanxi::views::enumerate){
+ 			rst[idx] = VkSemaphoreSubmitInfo{
+ 				.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+ 				.semaphore = u.get_semaphore(),
+diff --git a/src/vk_wrap/objects/resources/descriptor_buffer.ixx b/src/vk_wrap/objects/resources/descriptor_buffer.ixx
+index 69b3580..21e03ea 100644
+--- a/src/vk_wrap/objects/resources/descriptor_buffer.ixx
++++ b/src/vk_wrap/objects/resources/descriptor_buffer.ixx
+@@ -10,6 +10,7 @@ import mo_yanxi.vk.util;
+ import mo_yanxi.handle_wrapper;
+ import :resources;
+ import :ext;
++import mo_yanxi.views;
+ 
+ namespace mo_yanxi::vk {
+ 
+@@ -75,7 +76,7 @@ namespace mo_yanxi::vk {
+ 			properties.init(pd);
+ 			offsets.resize(binding_count);
+ 
+-			for (auto&& [i, offset] : offsets | std::views::enumerate) {
++			for (auto&& [i, offset] : offsets | mo_yanxi::views::enumerate) {
+ 				getDescriptorSetLayoutBindingOffsetEXT(device, layout, static_cast<std::uint32_t>(i), offsets.data() + i);
+ 			}
+ 		}
+@@ -366,7 +367,7 @@ namespace mo_yanxi::vk {
+ 			// 1. 根据新 Layout 更新 Offset 信息
+ 			// descriptor_buffer_base::offsets 是 protected 的，可以直接修改
+ 			offsets.resize(max_binding_index);
+-			for (auto&& [i, offset] : offsets | std::views::enumerate) {
++			for (auto&& [i, offset] : offsets | mo_yanxi::views::enumerate) {
+ 				getDescriptorSetLayoutBindingOffsetEXT(device, layout, static_cast<std::uint32_t>(i), offsets.data() + i);
+ 			}
+ 
+@@ -551,7 +552,7 @@ namespace mo_yanxi::vk {
+ 			const std::uint32_t chunkIndex = 0) const {
+ 
+ 			VkDeviceSize currentOffset{};
+-			for (const auto& [idx, sz] : segment_sizes | std::views::enumerate) {
++			for (const auto& [idx, sz] : segment_sizes | mo_yanxi::views::enumerate) {
+ 				(void)this->set_uniform_buffer(initialBinding + static_cast<std::uint32_t>(idx), ubo.get_address() + currentOffset, sz, chunkIndex);
+ 				currentOffset += sz;
+ 			}
+@@ -598,7 +599,7 @@ namespace mo_yanxi::vk {
+ 		}
+ 
+ 		template <std::ranges::input_range Rng>
+-			requires (std::convertible_to<std::ranges::range_const_reference_t<Rng>, const VkDescriptorImageInfo&>)
++			requires (std::convertible_to<mo_yanxi::ranges::range_const_reference_t<Rng>, const VkDescriptorImageInfo&>)
+ 		const descriptor_mapper& set_image(
+ 			const std::uint32_t binding,
+ 			const Rng& imageInfos,
+@@ -623,7 +624,7 @@ namespace mo_yanxi::vk {
+ 		}
+ 
+ 		template <std::ranges::input_range Rng>
+-			requires (std::convertible_to<std::ranges::range_const_reference_t<Rng>, VkImageView>)
++			requires (std::convertible_to<mo_yanxi::ranges::range_const_reference_t<Rng>, VkImageView>)
+ 		const descriptor_mapper& set_image(
+ 			const std::uint32_t binding,
+ 			const VkImageLayout layout,
+@@ -740,7 +741,7 @@ namespace mo_yanxi::vk {
+ 		}
+ 
+ 		template <std::ranges::input_range Rng>
+-			requires (std::convertible_to<std::ranges::range_const_reference_t<Rng>, const VkDescriptorImageInfo&>)
++			requires (std::convertible_to<mo_yanxi::ranges::range_const_reference_t<Rng>, const VkDescriptorImageInfo&>)
+ 		const dynamic_descriptor_mapper& set_images_at(
+ 			std::uint32_t binding,
+ 			std::size_t startIndex,
+@@ -769,7 +770,7 @@ namespace mo_yanxi::vk {
+ 
+ 		// 2. 传入 VkImageView 的 Range (共享 Layout 和 Sampler)
+ 		template <std::ranges::input_range Rng>
+-			requires (std::convertible_to<std::ranges::range_const_reference_t<Rng>, VkImageView>)
++			requires (std::convertible_to<mo_yanxi::ranges::range_const_reference_t<Rng>, VkImageView>)
+ 		const dynamic_descriptor_mapper& set_images_at(
+ 			std::uint32_t binding,
+ 			std::size_t startIndex,
+diff --git a/src/vk_wrap/stack_trace.cpp b/src/vk_wrap/stack_trace.cpp
+index 795c514..a6e5e23 100644
+--- a/src/vk_wrap/stack_trace.cpp
++++ b/src/vk_wrap/stack_trace.cpp
+@@ -4,9 +4,14 @@ module;
+ 
+ module mo_yanxi.stack_trace;
+ 
+-#if defined(__cpp_lib_stacktrace)
+-
++// Hoisted out of the #if below: mcpp's M1 scanner rejects an import inside a
++// conditional preprocessor block, even an inactive one. Unconditionally
++// importing it is harmless -- when __cpp_lib_stacktrace is absent the import is
++// simply unused.
+ import mo_yanxi.meta_programming;
++import mo_yanxi.views;
++
++#if defined(__cpp_lib_stacktrace)
+ 
+ void mo_yanxi::print_stack_trace(std::ostream& ss, unsigned skip, const std::stacktrace& currentStacktrace){
+ 	std::println(ss, "Stack Trace: ");
+@@ -17,7 +22,7 @@ void mo_yanxi::print_stack_trace(std::ostream& ss, unsigned skip, const std::sta
+ 		return std::filesystem::exists(path) && !path.extension().empty();
+ 	})
+ 	| std::views::drop(skip)
+-	| std::views::enumerate){
++	| mo_yanxi::views::enumerate){
+ 		auto desc = stacktrace.description();
+ 		auto descView = std::string_view{desc};
+ 
+diff --git a/src/vk_wrap/stack_trace.ixx b/src/vk_wrap/stack_trace.ixx
+index ca5f309..531dad4 100644
+--- a/src/vk_wrap/stack_trace.ixx
++++ b/src/vk_wrap/stack_trace.ixx
+@@ -14,6 +14,9 @@ export namespace mo_yanxi{
+ 		const std::stacktrace& currentStacktrace = std::stacktrace::current()
+ 	);
+ #else
+-	inline void print_stack_trace(std::ostream& ss) {}
++	// Same arity as the real one. The fallback took a single argument while
++	// its only caller passes (std::cerr, 1), so the branch that exists FOR a
++	// library without <stacktrace> did not compile on one.
++	inline void print_stack_trace(std::ostream&, unsigned = 1) {}
+ #endif
+ }
+diff --git a/src/vk_wrap/util/exception.ixx b/src/vk_wrap/util/exception.ixx
+index 99ad0b5..6a2d965 100644
+--- a/src/vk_wrap/util/exception.ixx
++++ b/src/vk_wrap/util/exception.ixx
+@@ -7,43 +7,31 @@ export module mo_yanxi.vk.util:exception;
+ import std;
+ 
+ namespace mo_yanxi::vk{
+-	export struct vk_error final : std::exception{
++	export struct vk_error final : std::runtime_error{
+ 		[[nodiscard]] vk_error(const VkResult result, const std::string_view msg)
+-			: std::exception(msg.data()), result{result}{
++			: std::runtime_error{std::string{msg}}, result{result}{
+ 		}
+ 
+ 		VkResult result{};
+-
+-		[[nodiscard]] const char* what() const override{
+-			return std::exception::what();
+-		}
+ 	};
+ 
+-	export struct unqualified_error final : std::exception{
+-		[[nodiscard]] unqualified_error() : std::exception("Env/Device Disabled"){
++	export struct unqualified_error final : std::runtime_error{
++		[[nodiscard]] unqualified_error() : std::runtime_error{"Env/Device Disabled"}{
+ 
+ 		}
+ 
+ 		[[nodiscard]] unqualified_error(const std::string_view msg)
+-			: std::exception(msg.data()){
+-		}
+-
+-		[[nodiscard]] const char* what() const override{
+-			return std::exception::what();
++			: std::runtime_error{std::string{msg}}{
+ 		}
+ 	};
+ 
+-	struct ambiguous_error final : std::exception{
+-		[[nodiscard]] ambiguous_error() : std::exception("Ambiguous Setting"){
++	struct ambiguous_error final : std::runtime_error{
++		[[nodiscard]] ambiguous_error() : std::runtime_error{"Ambiguous Setting"}{
+ 
+ 		}
+ 
+ 		[[nodiscard]] ambiguous_error(const std::string_view msg)
+-			: std::exception(msg.data()){
+-		}
+-
+-		[[nodiscard]] const char* what() const override{
+-			return std::exception::what();
++			: std::runtime_error{std::string{msg}}{
+ 		}
+ 	};
+ }
+diff --git a/src/vk_wrap/vk.util.ixx b/src/vk_wrap/vk.util.ixx
+index 1e012d5..e31f6f8 100644
+--- a/src/vk_wrap/vk.util.ixx
++++ b/src/vk_wrap/vk.util.ixx
+@@ -26,7 +26,7 @@ export
+ template <std::ranges::range Range, std::ranges::range ValidRange, typename Proj = std::identity>
+ 	requires requires(
+ 		std::unordered_set<std::string>& set,
+-		std::indirect_result_t<Proj, std::ranges::const_iterator_t<ValidRange>> value
++		std::indirect_result_t<Proj, std::ranges::iterator_t<const ValidRange>> value
+ 	){
+ 	requires std::constructible_from<std::string, std::ranges::range_value_t<Range>>;
+ 	// set.erase(value);
+@@ -45,7 +45,7 @@ export
+ template <std::ranges::range Range, std::ranges::range ValidRange, typename Proj = std::identity>
+ 	requires requires(
+ 	   std::unordered_set<std::string>& set,
+-	   std::indirect_result_t<Proj, std::ranges::const_iterator_t<ValidRange>> value
++	   std::indirect_result_t<Proj, std::ranges::iterator_t<const ValidRange>> value
+ 	){
+ 	requires std::constructible_from<std::string, std::ranges::range_value_t<Range>>;
+ 	}
+diff --git a/src/vk_wrap/vk.vertex_consteval_def.ixx b/src/vk_wrap/vk.vertex_consteval_def.ixx
+index c810fe4..982a5e4 100644
+--- a/src/vk_wrap/vk.vertex_consteval_def.ixx
++++ b/src/vk_wrap/vk.vertex_consteval_def.ixx
+@@ -17,22 +17,35 @@ struct vertex_attribute {
+     std::uint32_t binding = 0;
+ };
+ 
+-template <std::uint32_t Binding, auto FirstAttr, auto... RestAttrs>
+-struct binding_class_finder {
+-    using type = std::conditional_t<
+-        FirstAttr.binding == Binding,
+-        typename decltype(FirstAttr)::class_type,
+-        typename binding_class_finder<Binding, RestAttrs...>::type
+-    >;
++
++// The I-th type in a pack. Types only -- no attribute VALUE is ever a template
++// argument here, and that distinction is the whole fix.
++//
++// Every earlier form passed `Attrs...` (the values) to some other template, and
++// merely writing that made clang try to convert one attribute to another:
++//
++//   error: no viable conversion from 'const vertex_attribute<float[3], ...>'
++//          to 'vertex_attribute<float[2], ...>'
++//
++// The callee's body was never involved: a conditional_t recursion, an
++// `if constexpr` recursion, a plain index loop, `std::tuple{Attrs...}` and a
++// one-attribute-at-a-time helper all failed identically, and all of them
++// compile clean when reduced to a standalone file on this same compiler.
++//
++// What DOES work is visible three lines below this comment's use: the existing
++// static_assert already writes `typename decltype(Attrs)::class_type` in a fold
++// and always has. So `decltype(Attrs)` -- the TYPE -- crosses the boundary
++// fine, and `Attrs` -- the value -- does not. The mechanism behind that is NOT
++// established; the rule for clang + C++20 modules in this codebase is to
++// replace the shape, and this is the narrowest replacement that fits it.
++template <std::size_t I, typename First, typename... Rest>
++struct nth_type {
++    using type = typename nth_type<I - 1, Rest...>::type;
+ };
+ 
+-template <std::uint32_t Binding, auto LastAttr>
+-struct binding_class_finder<Binding, LastAttr> {
+-    using type = std::conditional_t<
+-        LastAttr.binding == Binding,
+-        typename decltype(LastAttr)::class_type,
+-        void
+-    >;
++template <typename First, typename... Rest>
++struct nth_type<0, First, Rest...> {
++    using type = First;
+ };
+ 
+ template <auto... Attrs>
+@@ -62,8 +75,29 @@ struct VertexInputStateGenerator {
+ 
+     static constexpr std::size_t binding_count = count_bindings();
+ 
++    // The class_type of the first attribute bound to `Binding`, or void.
++    // See attr_class_if_bound above for why it is spelled this way.
++    // Which attribute first carries `Binding`, or sizeof...(Attrs) for none.
++    // A plain loop over an array built by EXPRESSION expansion -- no template
++    // argument involved.
++    template <std::uint32_t Binding>
++    static consteval std::size_t binding_index() noexcept {
++        constexpr std::array bindings{Attrs.binding...};
++        for(std::size_t i = 0; i < bindings.size(); ++i){
++            if(bindings[i] == Binding) return i;
++        }
++        return bindings.size();
++    }
++
++    // conditional_t instantiates both arms, so nth_type has to name a valid
++    // index even when nothing matched; the clamped arm is then discarded.
+     template <std::uint32_t Binding>
+-    using binding_class_type = typename binding_class_finder<Binding, Attrs...>::type;
++    using binding_class_type = std::conditional_t<
++        binding_index<Binding>() == sizeof...(Attrs),
++        void,
++        typename nth_type<
++            (binding_index<Binding>() < sizeof...(Attrs) ? binding_index<Binding>() : 0),
++            decltype(Attrs)...>::type::class_type>;
+ 
+     template <std::uint32_t Binding>
+     static consteval std::uint32_t binding_stride() {

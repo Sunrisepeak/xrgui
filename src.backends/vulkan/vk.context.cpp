@@ -12,7 +12,7 @@ constexpr inline std::array device_extensions{
 
 		// VK_KHR_MAINTENANCE_5_EXTENSION_NAME,
 		// VK_KHR_MAINTENANCE_4_EXTENSION_NAME,
-		VK_KHR_MAINTENANCE_9_EXTENSION_NAME,
+		// VK_KHR_MAINTENANCE_9_EXTENSION_NAME,   // nothing uses it; see the commit
 		// VK_KHR_SHADER_UNTYPED_POINTERS_EXTENSION_NAME,
 
 		// VK_EXT_DESCRIPTOR_HEAP_EXTENSION_NAME,
@@ -245,6 +245,7 @@ void context::flush(){
 	} else if(result2 != VK_SUCCESS){
 		throw vk_error(result2, "Failed to present swap chain image!");
 	}
+	window_.show();   // created hidden; the first presented frame maps it
 }
 
 output_frame_token context::acquire_output_frame(){
@@ -308,6 +309,7 @@ void context::present_output_frame(const output_frame_token& token){
 	} else if(result != VK_SUCCESS){
 		throw vk_error(result, "Failed to present swap chain image!");
 	}
+	window_.show();   // created hidden; the first presented frame maps it
 }
 
 void context::wait_on_device() const{

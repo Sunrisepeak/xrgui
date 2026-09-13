@@ -10,6 +10,7 @@ import std;
 export import mo_yanxi.gui.action;
 import mo_yanxi.gui.infrastructure;
 import mo_yanxi.graphic.color;
+import mo_yanxi.math;
 
 namespace mo_yanxi::gui::action{
 export

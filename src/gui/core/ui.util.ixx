@@ -9,13 +9,14 @@ import mo_yanxi.gui.layout.policies;
 import std;
 import mo_yanxi.concepts;
 import mo_yanxi.meta_programming;
+import mo_yanxi.views;
 
 namespace mo_yanxi::gui::util{
 
 export
 template <
 	std::ranges::range Rng,
-	std::predicate<std::ranges::range_const_reference_t<Rng>> Proj = std::identity>
+	std::predicate<mo_yanxi::ranges::range_const_reference_t<Rng>> Proj = std::identity>
 	requires requires(Rng rng){
 		std::ranges::rbegin(rng);
 		std::ranges::empty(rng);
@@ -48,7 +49,7 @@ auto countRowAndColumn(Rng&& rng, Proj pred_isEndRow = {}){
 export
 template <
 	std::ranges::range Rng,
-	std::predicate<std::ranges::range_const_reference_t<Rng>> Proj = std::identity>
+	std::predicate<mo_yanxi::ranges::range_const_reference_t<Rng>> Proj = std::identity>
 	requires requires(Rng rng){
 		std::ranges::rbegin(rng);
 		std::ranges::empty(rng);

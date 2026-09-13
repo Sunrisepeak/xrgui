@@ -7,6 +7,8 @@ export module mo_yanxi.gui.elem.head_body_elem;
 export import mo_yanxi.gui.infrastructure;
 import mo_yanxi.gui.elem_containers;
 import std;
+import mo_yanxi.views;
+import mo_yanxi.math;
 
 namespace mo_yanxi::gui{
 
@@ -350,7 +352,7 @@ protected:
 		const auto remains = std::fdim(content_sz.*minorTarget, minor_config.masterings);
 		const auto passive_unit = remains / minor_config.passive;
 
-		for (auto&& [idx, item] : items | std::views::enumerate){
+		for (auto&& [idx, item] : items | mo_yanxi::views::enumerate){
 			auto minor = minor_config.size[idx];
 			if(item_size[idx].type == layout::size_category::passive)minor *= passive_unit;
 			math::vec2 cell_sz;

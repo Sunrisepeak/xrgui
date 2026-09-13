@@ -20,6 +20,7 @@ export import mo_yanxi.user_data_entry;
 
 import mo_yanxi.type_register;
 import std;
+import mo_yanxi.views;
 
 namespace mo_yanxi::graphic::g2d{
 inline void check_size(std::size_t size){
@@ -59,7 +60,7 @@ public:
 
 	[[nodiscard]] explicit data_entry_group(const data_layout_table<>& table)
 		: table(table), entries(table.size()){
-		for(auto&& [idx, data_entry] : table | std::views::enumerate){
+		for(auto&& [idx, data_entry] : table | mo_yanxi::views::enumerate){
 			entries[idx].unit_size = data_entry.entry.size;
 			entries[idx].data_.reserve(data_entry.entry.size * 8);
 		}
@@ -378,7 +379,7 @@ private:
 	}
 
 	void flush_pending_uniform_updates_(){
-		for(auto&& [idx, vertex_data_entry] : data_group_per_timeline_info_.entries | std::views::enumerate){
+		for(auto&& [idx, vertex_data_entry] : data_group_per_timeline_info_.entries | mo_yanxi::views::enumerate){
 			if(vertex_data_entry.collapse()){
 				const instruction_head collapse_head{
 					.type = instr_type::uniform_update,
@@ -389,7 +390,7 @@ private:
 		}
 
 		section_event* event{};
-		for(auto&& [idx, vertex_data_entry] : data_group_per_draw_call_info_.entries | std::views::enumerate){
+		for(auto&& [idx, vertex_data_entry] : data_group_per_draw_call_info_.entries | mo_yanxi::views::enumerate){
 			if(!vertex_data_entry.collapse()) continue;
 			if(!event){
 				event = &ensure_section_event_();

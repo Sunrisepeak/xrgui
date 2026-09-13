@@ -3,9 +3,7 @@ module;
 #include <vulkan/vulkan.h>
 #include <cassert>
 
-#ifndef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
 #include <spirv_reflect.h>;
-#endif
 
 export module mo_yanxi.graphic.compositor.post_process_pass;
 
@@ -20,10 +18,10 @@ export import mo_yanxi.vk;
 import mo_yanxi.meta_programming;
 import mo_yanxi.utility;
 import mo_yanxi.raw_byte_buffer;
+// vk:: names are used directly below. Module visibility is not transitive:
+// a module that USES a name must import the module that exports it.
+import mo_yanxi.vk.util;
 
-#ifdef XRGUI_FUCK_MSVC_INCLUDE_CPP_HEADER_IN_MODULE
-import <spirv_reflect.h>;
-#endif
 
 namespace mo_yanxi::graphic::compositor{
 namespace{

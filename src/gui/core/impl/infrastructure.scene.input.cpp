@@ -7,6 +7,7 @@ module mo_yanxi.gui.infrastructure;
 
 import :scene_input;
 import std;
+import mo_yanxi.views;
 
 namespace mo_yanxi::gui{
 
@@ -851,7 +852,7 @@ input_state::cursor_update_result input_state::update_cursor(overlay_manager& ov
 	util::transform_scene2local(rng, std::span<math::vec2>{cursor_points});
 	scene_input_dispatcher dispatcher{*this};
 
-	for(const auto& [i, state] : mouse_states_ | std::views::enumerate){
+	for(const auto& [i, state] : mouse_states_ | mo_yanxi::views::enumerate){
 		if(!state.is_ui_owned()) continue;
 		static_cast<void>(dispatcher.dispatch_pointer_drag(state, static_cast<std::uint16_t>(i), rng));
 	}

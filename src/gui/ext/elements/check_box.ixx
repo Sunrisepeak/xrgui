@@ -7,6 +7,8 @@ export module mo_yanxi.gui.elem.check_box;
 import std;
 import mo_yanxi.gui.elem.value_selector;
 import mo_yanxi.gui.region_drawable.derives;
+import mo_yanxi.gui.infrastructure;
+import mo_yanxi.react_flow;
 
 namespace mo_yanxi::gui{
 

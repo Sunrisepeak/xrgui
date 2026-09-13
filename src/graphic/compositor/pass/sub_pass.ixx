@@ -1,11 +1,17 @@
 module;
 
+// Aligned operator new: without this unit's own declaration, clang reports
+// the call as ambiguous between libc++'s (reached through `import std`)
+// and the one implicitly declared here.
+#include <new>
+
 #include <vulkan/vulkan.h>
 
 export module mo_yanxi.graphic.compositor.sub_pass;
 
 import std;
 export import mo_yanxi.graphic.compositor.post_process_pass;
+import mo_yanxi.vk.util;
 
 namespace mo_yanxi::graphic::compositor{
 export

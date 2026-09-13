@@ -1,0 +1,21 @@
+# mcpp package for mo_yanxi.react_flow (external/mo_yanxi_react_flow).
+#
+# Transcribed from that repo's own xmake.lua:
+#
+#   add_files("src/**.ixx", {public = true})   -- examples/ and test/ stay out
+#   add_deps("mo_yanxi.utility", {public = true})
+#
+# The headers it includes (mo_yanxi/adapted_attributes.hpp,
+# mo_yanxi/enum_operator_gen.hpp) come from utility's include/ directory, which
+# that package already puts on the path.
+[package]
+name    = "mo_yanxi_react_flow"
+version = "0.1.0"
+
+[build]
+module_extensions = [".ixx"]
+
+sources = ["../../external/mo_yanxi_react_flow/src/**/*.ixx"]
+
+[dependencies]
+mo_yanxi_utility = { path = "../mo_yanxi_utility" }

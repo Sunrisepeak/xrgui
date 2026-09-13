@@ -6,6 +6,7 @@ module;
 module mo_yanxi.backend.vulkan.renderer;
 
 import mo_yanxi.backend.vulkan.renderer.components;
+import mo_yanxi.views;
 
 namespace mo_yanxi::backend::vulkan{
 using mo_yanxi::vk::sync::sync_barrier_batch;
@@ -345,7 +346,11 @@ bool renderer::command_recording_context::apply_section_state_(
 				cache_clear_attachments_.push_back({
 						.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
 						.colorAttachment = i,
-						.clearValue = param
+						// `.vk`, the union member itself: MSVC 14.52.36725 tries brace
+						// elision on `{.color = param}` before the conversion operator
+						// and fails on `float`; clang picks the conversion. The member
+						// needs neither.
+						.clearValue = {.color = param.vk}
 					});
 			});
 			VkClearRect rect{
@@ -477,7 +482,7 @@ void renderer::resize(VkExtent2D extent){
 
 	{
 		vk::descriptor_mapper mapper{mask_descriptor_buffer_};
-		for(auto&& [i, mask_image_view] : attachment_manager_.get_mask_image_views() | std::views::enumerate){
+		for(auto&& [i, mask_image_view] : attachment_manager_.get_mask_image_views() | mo_yanxi::views::enumerate){
 			mapper.set_image(0, mask_image_view, (std::uint32_t)i, VK_IMAGE_LAYOUT_GENERAL, nullptr,
 			                 VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
 		}

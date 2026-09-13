@@ -19,6 +19,7 @@ import mo_yanxi.snap_shot;
 import mo_yanxi.math.vector2;
 import mo_yanxi.math.matrix3;
 import mo_yanxi.csv;
+import mo_yanxi.views;
 
 namespace mo_yanxi::gui::cpd{
 
@@ -69,7 +70,7 @@ private:
 
 				for(const auto& [idx, val] : std::span{
 					    glyph_layout.elems.begin() + current_line.glyph_range.pos, current_line.glyph_range.size
-				    } | std::views::enumerate){
+				    } | mo_yanxi::views::enumerate){
 					if(!val.texture->view) continue;
 					auto start = math::fma(static_cast<float>(idx), spacing, line_src + val.aabb.src);
 					buffer.push(rect_aabb{

@@ -5,6 +5,7 @@ export module mo_yanxi.thread_pool;
 
 import std;
 import mo_yanxi.concurrent.mpsc_queue;
+import mo_yanxi.functional;
 
 //TODO this is complete an AI trash slop...
 
@@ -12,7 +13,7 @@ namespace mo_yanxi{
 
 export
 class thread_pool{
-	ccur::mpsc_queue<std::move_only_function<void()>> queue_;
+	ccur::mpsc_queue<mo_yanxi::move_only_function<void()>> queue_;
 	std::vector<std::jthread> workers_;
 
 public:
@@ -36,7 +37,7 @@ public:
 	}
 
 	// satisfies async_endpoint_for concept (task_queue.ixx)
-	[[nodiscard]] bool try_post(std::move_only_function<void()> fn){
+	[[nodiscard]] bool try_post(mo_yanxi::move_only_function<void()> fn){
 		queue_.push(std::move(fn));
 		return true;
 	}
