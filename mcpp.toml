@@ -173,6 +173,16 @@ macos   = "llvm@22.1.8"
 [xlings]
 subos = "default"
 
+# The Vulkan validation layer, for the developer's own runs: what a debug
+# build asks the loader for. From the ecosystem like every other library
+# (the host's copy is not reachable from this glibc), and `run` tier, so a
+# consumer's artifact never carries it. Members and template projects
+# inherit this entry through their dependency on xrgui. Linux only: that is
+# the one platform whose programs run on a payload glibc; Windows and macOS
+# load the SDK's layer from the machine as before.
+[target.linux.xlings.workspace]
+"xim:vulkan-validation-layers" = { version = "1.4.357.0", when = "run" }
+
 [profile.release]
 opt      = 2
 debug    = true               # matches xmake's set_symbols("debug", "embed")
